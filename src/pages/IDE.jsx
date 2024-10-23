@@ -89,8 +89,8 @@ function IDE() {
           <Split direction="horizontal" style={{ flex: 1, display: 'flex' }}>
             <FileManager contrast={contrast}/>
               <Split direction="vertical" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <TextEditor contrast={contrast} scale={scale} />
-                <TerminalTabs contrast={contrast} scale={scale} />
+                <TextEditor contrast={contrast} scale={scale}  setOutput={setOutput}/>
+                <TerminalTabs contrast={contrast} scale={scale} output={output} />
               </Split>
           </Split>
       </Zoom>
