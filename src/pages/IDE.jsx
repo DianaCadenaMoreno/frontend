@@ -55,7 +55,8 @@ function IDE() {
             zIndex: 1000,
             border: '2px solid rgba(255, 0, 0, 0.5)',
             //clipPath: 'circle(150px at center)',
-            overflow: 'visible',
+            overflow: 'hidden',
+            pointerEvents: 'none',
           }}
         >
           <div
@@ -83,19 +84,29 @@ function IDE() {
           </div>
         </div>
       )}
+      <Zoom contrast={contrast} setContrast={setContrast} scale={scale} setScale={setScale} magnifierEnabled={magnifierEnabled}>
+        <Navbar onOpenAppearanceModal={handleOpenAppearanceModal} />
+          <Split direction="horizontal" style={{ flex: 1, display: 'flex' }}>
+            <FileManager contrast={contrast}/>
+              <Split direction="vertical" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <TextEditor contrast={contrast} scale={scale} />
+                <TerminalTabs contrast={contrast} scale={scale} />
+              </Split>
+          </Split>
+      </Zoom>
       {/* contenido principal fuera de la condición */}
-      {!magnifierEnabled && (
+      {/* {!magnifierEnabled && (
         <Zoom contrast={contrast} setContrast={setContrast} scale={scale} setScale={setScale} magnifierEnabled={magnifierEnabled}>
           <Navbar onOpenAppearanceModal={handleOpenAppearanceModal} />
           <Split direction="horizontal" style={{ flex: 1, display: 'flex' }}>
-            <FileManager />
+            <FileManager contrast={contrast} />
             <Split direction="vertical" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
               <TextEditor contrast={contrast} scale={scale} setOutput={setOutput} />
               <TerminalTabs contrast={contrast} scale={scale} output={output} />
             </Split>
           </Split>
         </Zoom>
-      )}
+      )} */}
       <AppearanceModal
         open={isAppearanceModalOpen}
         handleClose={handleCloseAppearanceModal}

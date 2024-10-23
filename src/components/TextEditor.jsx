@@ -3,7 +3,8 @@ import React, { useState } from 'react';
 import { Box, Typography, Breadcrumbs, Link, Button, CircularProgress } from '@mui/material';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import Editor from '@monaco-editor/react';
-import Terminal from './Terminal';
+//import Terminal from './Terminal';
+import axiosInstance from '../utils/axiosInstance';
 
 function handleClick(event) {
   event.preventDefault();
@@ -40,12 +41,9 @@ function TextEditor({ contrast, setOutput }) {
     formData.append('file', blob, 'code.py'); // Agregar archivo al FormData
     console.log(formData)
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/run/', {
-        method: 'POST',
-        body: formData,
-      });
-      const result = await response.json();
-      setIsLoading(false)
+      const response = await axiosInstance.post('run/', formData);
+      const result = response.data;
+      setIsLoading(false);
       console.log(result); // Mostrar el resultado de la ejecución en consola
       setOutput(result); // Actualizar el estado de la salida
     } catch (error) {

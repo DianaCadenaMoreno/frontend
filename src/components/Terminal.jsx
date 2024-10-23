@@ -15,7 +15,7 @@ function Terminal({ debug, contrast, output }) {
     <Box sx={terminalStyle}>
       {/* {debug ? "Consola de depuracion" : "Terminal"} */}
       {output ? (
-        output.returncode === 0 ? (
+        output.stderr === '' ? (
           <>
             <div>{output.stdout}</div>
           </>
