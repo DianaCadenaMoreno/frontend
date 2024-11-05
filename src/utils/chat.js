@@ -1,35 +1,88 @@
 import axios from 'axios';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const generateCode = async (prompt, setGeneratedCode, setLoading) => {
+const genAI = new GoogleGenerativeAI(process.env.REACT_APP_API_KEY);
+
+const model = genAI.getGenerativeModel({
+  model: "gemini-1.5-flash",  
+  tools: [
+    {
+      codeExecution: {},
+    },
+  ],
+});
+
+// const generateCode = async (prompt, setGeneratedCode, setLoading) => {
+//   setLoading(true);
+//   try {
+//     const response = await axios.post(
+//       'https://api.openai.com/v1/chat/completions',
+//       {
+//         model: 'gpt-3.5-turbo',
+//         messages: [
+//           {
+//             role: 'system',
+//             content: 'You are a helpful assistant that generates code snippets, with documentation context for accesibility.',
+//           },
+//           {
+//             role: 'user',
+//             content: prompt,
+//           },
+//         ],
+//         max_tokens: 150,
+//         temperature: 0.5,
+//       },
+//       {
+//         headers: {
+//           'Content-Type': 'application/json',
+//           'Authorization': `Bearer ${process.env.REACT_APP_OPENAI_API_KEY}`,
+//         },
+//       }
+//     );
+//     setGeneratedCode(response.data.choices[0].message.content);
+//   } catch (error) {
+//     console.error('Error al generar código:', error);
+//   } finally {
+//     setLoading(false);
+//   }
+// };
+
+//const generateCode = async (prompt, setGeneratedCode, setLoading) => {
+const generateCode = async (prompt, setLoading, chatHistory) => {
   setLoading(true);
   try {
-    const response = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: 'gpt-3.5-turbo',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a helpful assistant that generates code snippets, with documentation context for accesibility.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        max_tokens: 150,
-        temperature: 0.5,
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.REACT_APP_OPENAI_API_KEY}`,
-        },
-      }
-    );
-    setGeneratedCode(response.data.choices[0].message.content);
+    const fullPrompt = `You are a helpful assistant that generates code snippets, with documentation context for accessibility, translate your entire amswer into the following language. ${prompt}`;
+    const messages = [
+      { role: "user", content: prompt }, // Asegúrate de que este sea el primer mensaje
+      { role: "model", content: fullPrompt }, // Este se puede agregar después
+      ...chatHistory.map(message => ({ // Agrega el historial existente
+        role: message.role,
+        content: message.content,
+      }))
+    ];
+
+    // Inicia el chat con el historial de mensajes
+    const chat = await model.startChat({
+      history: messages.map((message) => ({
+        role: message.role,
+        parts: [{ text: message.content }]
+      }))
+    });
+    //const response = await model.generateContent(fullPrompt);
+    //console.log(response.response.text());
+    // Extrae el texto generado
+    //setGeneratedCode(response.response.text());
+    //setGeneratedCode(response.data?.embeddings[0]?.content || "No se generó código.");
+
+    // Envía el mensaje actual y espera la respuesta
+    const response = await chat.sendMessage(prompt);
+    console.log("respuesta",response.response.text());
+    const generatedText = response.response.text();
+    console.log("Generated response:", generatedText);
+    //return response.response.text();
+    return generatedText;
   } catch (error) {
-    console.error('Error al generar código:', error);
+    console.error("Error al generar código:", error);
   } finally {
     setLoading(false);
   }

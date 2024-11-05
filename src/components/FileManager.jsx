@@ -9,7 +9,8 @@ import useSpeechRecognition from '../utils/speech';
 function FileManager({ contrast }) {
   const [tabIndex, setTabIndex] = React.useState(0);
   const [prompt, setPrompt] = React.useState('');
-  const [generatedCode, setGeneratedCode] = React.useState('');
+  // const [generatedCode, setGeneratedCode] = React.useState('');
+  const [chatHistory, setChatHistory] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const { isListening, transcript, setIsListening } = useSpeechRecognition();
 
@@ -23,8 +24,25 @@ function FileManager({ contrast }) {
     setTabIndex(newIndex);
   };
 
-  const handleGenerateCode = () => {
-    generateCode(prompt, setGeneratedCode, setLoading);
+  // const handleGenerateCode = () => {
+  //   generateCode(prompt, setGeneratedCode, setLoading);
+  // };
+
+  const handleGenerateCode = async () => {
+    setLoading(true);
+    try {
+      const response = await generateCode(prompt, setLoading, chatHistory);
+      setChatHistory(prevHistory => [
+        ...prevHistory,
+        { role: 'user', content: prompt },
+        { role: 'model', content: response }
+      ]);
+      setPrompt('');
+    } catch (error) {
+      console.error("Error al generar código:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleMicClick = () => {
@@ -43,14 +61,22 @@ function FileManager({ contrast }) {
       <Box sx={{ flexGrow: 1, p: 3, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
         {tabIndex === 1 && (
           <div>
-            <Box sx={{ flexGrow: 1, overflowY: 'auto', mb: 2 }}>
+            <Box sx={{ flexGrow: 1, overflowX: 'auto', mb: 2 }}>
               <Typography variant="h6" component="h2" aria-live="polite">
                 Bienvenido a tu copiloto, estoy aquí para ayudarte a hacer las cosas más rápido.
               </Typography>
               {loading ? (
                 <CircularProgress color={contrast === 'high-contrast' ? 'inherit' : 'primary'}/>
               ) : (
-                <pre style={{ color: contrast === 'high-contrast' ? '#fff' : '#000' }}>{generatedCode}</pre>
+                <div>
+                  {chatHistory.map((message, index) => (
+                    <Typography key={index} style={{ color: contrast === 'high-contrast' ? '#fff' : '#000' }}>
+                      <strong>{message.role === 'user' ? 'Tú: ' : 'Copiloto: '}</strong>
+                      {message.content}
+                    </Typography>
+                  ))}
+                </div>
+                // <pre style={{ color: contrast === 'high-contrast' ? '#fff' : '#000' }}>{generatedCode}</pre>
               )}
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>

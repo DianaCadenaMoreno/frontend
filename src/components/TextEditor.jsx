@@ -14,6 +14,7 @@ function handleClick(event) {
 function TextEditor({ contrast, setOutput }) {
   const [editorContent, setEditorContent] = useState(''); // Estado para almacenar el contenido del editor
   const [isLoading, setIsLoading] = useState(false);
+  const [codeStructure, setCodeStructure] = useState([]);
 
   const breadcrumbs = [
     <Link underline="hover" key="1" color={contrast === 'high-contrast' ? '#fff' : 'inherit'} href="/" onClick={handleClick}>
@@ -32,6 +33,21 @@ function TextEditor({ contrast, setOutput }) {
       Breadcrumb
     </Typography>,
   ];
+
+  const handleAnalyzeStructure = async (code) => {
+    try {
+      const response = await axiosInstance.post('structure/', { code });
+      setCodeStructure(response.data.structure || []);
+    } catch (error) {
+      console.error('Error analyzing code structure:', error);
+    }
+  };
+
+  // Llama a handleAnalyzeStructure cuando el contenido del editor cambie
+  const handleEditorChange = (value) => {
+    setEditorContent(value);
+    handleAnalyzeStructure(value);  // Analiza el código en tiempo real
+  };
 
   // Función para manejar el envío del archivo .py
   const handleSendFile = async () => {
@@ -76,7 +92,7 @@ function TextEditor({ contrast, setOutput }) {
         height="260px"
         defaultLanguage="python"
         defaultValue="Presiona CTRL+I para preguntarle a Github Copilot //Comienza a escribir para ignorar..."
-        onChange={(value) => setEditorContent(value)} // Actualiza el estado cuando cambia el contenido del editor
+        onChange={(value) => { setEditorContent(value); handleEditorChange(value); }} // Actualiza el estado cuando cambia el contenido del editor
         options={{
           selectOnLineNumbers: true,
           minimap: { enabled: false },
@@ -88,6 +104,16 @@ function TextEditor({ contrast, setOutput }) {
         }}
         theme={contrast === 'high-contrast' ? 'vs-dark' : 'vs-light'}
       />
+      <Box>
+        <Typography variant="h6">Estructura del Código</Typography>
+        <ul>
+          {codeStructure.map((item, index) => (
+            <li key={index}>
+              {item.type} {item.name ? `- ${item.name}` : ''} en línea {item.line}
+            </li>
+          ))}
+        </ul>
+      </Box>
     </Box>
   );
 }
