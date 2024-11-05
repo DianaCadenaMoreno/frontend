@@ -70,7 +70,6 @@ const generateCode = async (prompt, setLoading, chatHistory) => {
     });
     //const response = await model.generateContent(fullPrompt);
     //console.log(response.response.text());
-    // Extrae el texto generado
     //setGeneratedCode(response.response.text());
     //setGeneratedCode(response.data?.embeddings[0]?.content || "No se generó código.");
 
