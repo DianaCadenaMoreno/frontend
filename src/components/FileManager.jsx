@@ -151,7 +151,7 @@ function FileManager({ contrast, codeStructure }) {
         {/* <Typography variant="h6">Estructura del Código</Typography> */}
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Typography variant="h6">Estructura del Código</Typography>
-          <IconButton onClick={() => setIsCodeStructureOpen(!isCodeStructureOpen)}>
+          <IconButton onClick={() => setIsCodeStructureOpen(!isCodeStructureOpen)} aria-label="Toggle code structure">
             {isCodeStructureOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
           </IconButton>
         </Box>
@@ -159,7 +159,7 @@ function FileManager({ contrast, codeStructure }) {
           <ul>
             {codeStructure.map((item, index) => (
               <li key={index}>
-                {item.type} {item.name ? `- ${item.name}` : ''} en línea {item.line}
+                {item.type} {item.name ? `- ${item.name}` : ''} en línea {item.line} y cierra en línea {item.end_line}
               </li>
             ))}
           </ul>

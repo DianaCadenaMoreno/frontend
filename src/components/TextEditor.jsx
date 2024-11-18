@@ -84,7 +84,7 @@ function TextEditor({ contrast, setOutput, setCodeStructure }) {
           {breadcrumbs}
         </Breadcrumbs>
         {/* Botón para enviar el contenido del editor como archivo .py */}
-        <Button variant="contained" color="success" onClick={handleSendFile}>
+        <Button variant="contained" color="success" onClick={handleSendFile} aria-label="Run code">
           {isLoading ? <CircularProgress size={24} color="inherit" /> : 'RUN'}
         </Button>
       </Box>
