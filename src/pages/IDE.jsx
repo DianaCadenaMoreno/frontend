@@ -15,6 +15,7 @@ function IDE() {
   const [isAppearanceModalOpen, setIsAppearanceModalOpen] = React.useState(false);
   const [magnifierEnabled, setMagnifierEnabled] = React.useState(false);
   const [output, setOutput] = React.useState(null); // Añadir estado output
+  const [codeStructure, setCodeStructure] = React.useState([]);
 
   const handleOpenAppearanceModal = () => setIsAppearanceModalOpen(true);
   const handleCloseAppearanceModal = () => setIsAppearanceModalOpen(false);
@@ -41,7 +42,7 @@ function IDE() {
   }, [magnifierEnabled]);
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
       {/* Lupa */}
       {magnifierEnabled && (
         <div
@@ -74,8 +75,8 @@ function IDE() {
               <Zoom contrast={contrast} setContrast={setContrast} scale={scale} setScale={setScale} magnifierEnabled={magnifierEnabled}>
                 <Navbar onOpenAppearanceModal={handleOpenAppearanceModal} />
                 <Split direction="horizontal" style={{ flex: 1, display: 'flex' }}>
-                  <FileManager />
-                  <Split direction="vertical" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <FileManager contrast={contrast} codeStructure={codeStructure}/> {/*verificar que se pasen en el otro estado*/}
+                  <Split direction="vertical" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}> {/*verificar que se pasen en el otro estado*/}
                     <TextEditor contrast={contrast} scale={scale} />
                     <TerminalTabs contrast={contrast} scale={scale} />
                   </Split>
@@ -87,9 +88,9 @@ function IDE() {
       <Zoom contrast={contrast} setContrast={setContrast} scale={scale} setScale={setScale} magnifierEnabled={magnifierEnabled}>
         <Navbar onOpenAppearanceModal={handleOpenAppearanceModal} />
           <Split direction="horizontal" style={{ flex: 1, display: 'flex' }}>
-            <FileManager contrast={contrast}/>
+            <FileManager contrast={contrast} codeStructure={codeStructure}/>
               <Split direction="vertical" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <TextEditor contrast={contrast} scale={scale}  setOutput={setOutput}/>
+                <TextEditor contrast={contrast} scale={scale}  setOutput={setOutput} setCodeStructure={setCodeStructure}/>
                 <TerminalTabs contrast={contrast} scale={scale} output={output} />
               </Split>
           </Split>
