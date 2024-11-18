@@ -11,10 +11,10 @@ function handleClick(event) {
   console.info('You clicked a breadcrumb.');
 }
 
-function TextEditor({ contrast, setOutput }) {
+function TextEditor({ contrast, setOutput, setCodeStructure }) {
   const [editorContent, setEditorContent] = useState(''); // Estado para almacenar el contenido del editor
   const [isLoading, setIsLoading] = useState(false);
-  const [codeStructure, setCodeStructure] = useState([]);
+  //const [codeStructure, setCodeStructure] = useState([]);
 
   const breadcrumbs = [
     <Link underline="hover" key="1" color={contrast === 'high-contrast' ? '#fff' : 'inherit'} href="/" onClick={handleClick}>
@@ -104,7 +104,7 @@ function TextEditor({ contrast, setOutput }) {
         }}
         theme={contrast === 'high-contrast' ? 'vs-dark' : 'vs-light'}
       />
-      <Box>
+      {/* <Box>
         <Typography variant="h6">Estructura del Código</Typography>
         <ul>
           {codeStructure.map((item, index) => (
@@ -113,7 +113,7 @@ function TextEditor({ contrast, setOutput }) {
             </li>
           ))}
         </ul>
-      </Box>
+      </Box> */}
     </Box>
   );
 }
