@@ -47,6 +47,14 @@ function TextEditor({ contrast, setOutput, setCodeStructure }) {
   const handleEditorChange = (value) => {
     setEditorContent(value);
     handleAnalyzeStructure(value);  // Analiza el código en tiempo real
+
+    if (value && 'speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(value);
+      utterance.onerror = (e) => console.error('Speech synthesis error:', e);
+      window.speechSynthesis.speak(utterance);
+    } else {
+      console.error('Speech synthesis not supported in this browser.');
+    }
   };
 
   // Función para manejar el envío del archivo .py

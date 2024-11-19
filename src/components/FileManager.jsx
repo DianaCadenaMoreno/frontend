@@ -8,6 +8,8 @@ import useSpeechRecognition from '../utils/speech';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 function FileManager({ contrast, codeStructure }) {
   const [tabIndex, setTabIndex] = React.useState(0);
@@ -31,6 +33,21 @@ function FileManager({ contrast, codeStructure }) {
   // const handleGenerateCode = () => {
   //   generateCode(prompt, setGeneratedCode, setLoading);
   // };
+  React.useEffect(() => {
+    if (chatHistory.length > 0) {
+      const lastMessage = chatHistory[chatHistory.length - 1].content;
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(lastMessage);
+        utterance.lang = 'es-ES';
+        utterance.onerror = (e) => console.error('Speech synthesis error:', e);
+        utterance.onstart = () => console.log('Speech synthesis started');
+        utterance.onend = () => console.log('Speech synthesis ended');
+        window.speechSynthesis.speak(utterance);
+      } else {
+        console.error('Speech synthesis not supported in this browser.');
+      }
+    }
+  }, [chatHistory]);
 
   const handleGenerateCode = async () => {
     setLoading(true);
@@ -49,35 +66,47 @@ function FileManager({ contrast, codeStructure }) {
     }
   };
 
-  const CodeBlock = ({ code }) => (
-    <div style={{ position: 'relative', backgroundColor: '#f5f5f5', padding: '10px', borderRadius: '5px', marginBottom: '10px' }}>
-      <CopyToClipboard text={code}>
-        <Button variant="contained" color="primary" style={{ position: 'absolute', top: '10px', right: '10px' }}>
-          Copiar
-        </Button>
-      </CopyToClipboard>
-      <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-        <code>{code}</code>
-      </pre>
-    </div>
-  );
+  const updatedChatHistory = chatHistory.map(message => ({
+    ...message,
+    content: message.content.replace(/'/g, '"')
+  }));
 
   const ChatHistory = ({ chatHistory, contrast }) => (
     <div>
-      {chatHistory.map((message, index) => (
-        <div key={index} style={{ marginBottom: '10px' }}>
-          <Typography style={{ color: contrast === 'high-contrast' ? '#fff' : '#000' }}>
-            <strong>{message.role === 'user' ? 'Tú: ' : 'Copiloto: '}</strong>
+      {updatedChatHistory.map((message, index) => (
+        <div key={index} style={{ marginBottom: "10px" }}>
+          <Typography style={{ color: contrast === "high-contrast" ? "#fff" : "#000" }}>
+            <strong>{message.role === "user" ? "Tú: " : "Copiloto: "}</strong>
           </Typography>
-          {message.content.split(/(```[\s\S]*?```)/g).map((part, i) => (
-            part.startsWith('```') ? (
-              <CodeBlock key={i} code={part.slice(3, -3)} />
-            ) : (
-              <Typography key={i} style={{ color: contrast === 'high-contrast' ? '#fff' : '#000', marginBottom: '10px' }}>
-                {part}
-              </Typography>
-            )
-          ))}
+          <ReactMarkdown
+            children={message.content}
+            remarkPlugins={[remarkGfm]}
+            components={{
+              p: ({ node, ...props }) => (
+                <Typography
+                  {...props}
+                  style={{ color: contrast === "high-contrast" ? "#fff" : "#000", marginBottom: "10px" }}
+                />
+              ),
+              code: ({ node, inline, className, children, ...props }) => (
+                <div style={{ position: "relative" }}>
+                  <pre style={{ whiteSpace: "pre-wrap", wordWrap: "break-word" }}>
+                    <code {...props}>{children}</code>
+                  </pre>
+                  <CopyToClipboard text={children}>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      size="small"
+                      style={{ position: "absolute", top: 0, right: 0 }}
+                    >
+                      Copiar
+                    </Button>
+                  </CopyToClipboard>
+                </div>
+              ),
+            }}
+          />
         </div>
       ))}
     </div>
@@ -92,7 +121,7 @@ function FileManager({ contrast, codeStructure }) {
       <Tabs value={tabIndex} onChange={handleTabChange} aria-label="File Manager Tabs" 
         textColor={contrast === 'high-contrast' ? 'inherit' : 'primary'}
         indicatorColor={'primary'}>
-        <Tab label="Files" />
+        <Tab label="Archivos" />
         <Tab label="Chat" />
         {/* pestañas */}
       </Tabs>
@@ -146,25 +175,43 @@ function FileManager({ contrast, codeStructure }) {
           </div>
         )}
         {/* contenido para otras pestañas */}
-      </Box>
-      <Box>
-        {/* <Typography variant="h6">Estructura del Código</Typography> */}
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Typography variant="h6">Estructura del Código</Typography>
-          <IconButton onClick={() => setIsCodeStructureOpen(!isCodeStructureOpen)} aria-label="Toggle code structure">
-            {isCodeStructureOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-          </IconButton>
+        {/* <Box >
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography variant="h6">Estructura del Código</Typography>
+            <IconButton onClick={() => setIsCodeStructureOpen(!isCodeStructureOpen)} aria-label="Toggle code structure">
+              {isCodeStructureOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            </IconButton>
+          </Box>
+          <Collapse in={isCodeStructureOpen}>
+            <ul>
+              {codeStructure.map((item, index) => (
+                <li key={index}>
+                  {item.type} {item.name ? `- ${item.name}` : ''} en línea {item.line} y cierra en línea {item.end_line}
+                </li>
+              ))}
+            </ul>
+          </Collapse>
+        </Box> */}
+        <Box >
+          {/* <Typography variant="h6">Estructura del Código</Typography> */}
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography variant="h6">Estructura del Código</Typography>
+            <IconButton onClick={() => setIsCodeStructureOpen(!isCodeStructureOpen)} aria-label="Toggle code structure">
+              {isCodeStructureOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            </IconButton>
+          </Box>
+          <Collapse in={isCodeStructureOpen}>
+            <ul>
+              {codeStructure.map((item, index) => (
+                <li key={index}>
+                  {item.type} {item.name ? `- ${item.name}` : ''} en línea {item.line} y cierra en línea {item.end_line}
+                </li>
+              ))}
+            </ul>
+          </Collapse>
         </Box>
-        <Collapse in={isCodeStructureOpen}>
-          <ul>
-            {codeStructure.map((item, index) => (
-              <li key={index}>
-                {item.type} {item.name ? `- ${item.name}` : ''} en línea {item.line} y cierra en línea {item.end_line}
-              </li>
-            ))}
-          </ul>
-        </Collapse>
       </Box>
+        
     </Box>
   );
 }

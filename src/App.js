@@ -10,24 +10,33 @@ function useScreenReader() {
     const handleFocus = (event) => {
       const element = event.target;
       const text = element instanceof HTMLElement ? (element.getAttribute('aria-label') || element.textContent) : '';
-      if (text) {
+      if (text && window.speechSynthesis) {
         const utterance = new SpeechSynthesisUtterance(text);
-        speechSynthesis.speak(utterance);
+        utterance.lang = 'es-ES';
+        utterance.rate = 2;
+        utterance.onerror = (e) => console.error('Speech synthesis error:', e);
+        window.speechSynthesis.speak(utterance);
       }
     };
 
-    window.addEventListener('focus', handleFocus, true);
+    if (window.speechSynthesis) {
+      window.addEventListener('focus', handleFocus, true);
+    } else {
+      console.error('Speech synthesis not supported in this browser.');
+    }
 
     return () => {
-      window.removeEventListener('focus', handleFocus, true);
+      if (window.speechSynthesis) {
+        window.removeEventListener('focus', handleFocus, true);
+      }
     };
   }, []);
 }
 
 function App() {
   useScreenReader();
-
   return ( 
+    <div className = "App" >
     <Router>
       <Routes>
         <Route
@@ -39,6 +48,7 @@ function App() {
         />
       </Routes>
     </Router>
+    </div>
   );
 }
 
