@@ -1,4 +1,4 @@
-import axios from 'axios';
+// import axios from 'axios';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.REACT_APP_API_KEY);
@@ -75,13 +75,12 @@ const generateCode = async (prompt, setLoading, chatHistory) => {
 
     // Envía el mensaje actual y espera la respuesta
     const response = await chat.sendMessage(prompt);
-    console.log("respuesta",response.response.text());
     const generatedText = response.response.text();
     console.log("Generated response:", generatedText);
-    //return response.response.text();
     return generatedText;
   } catch (error) {
     console.error("Error al generar código:", error);
+    return "No se generó respuesta, intenté de nuevo más tarde.";
   } finally {
     setLoading(false);
   }

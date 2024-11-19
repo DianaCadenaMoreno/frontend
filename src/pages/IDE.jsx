@@ -87,7 +87,7 @@ function IDE() {
       )}
       <Zoom contrast={contrast} setContrast={setContrast} scale={scale} setScale={setScale} magnifierEnabled={magnifierEnabled}>
         <Navbar onOpenAppearanceModal={handleOpenAppearanceModal} />
-          <Split direction="horizontal" style={{ flex: 1, display: 'flex' }}>
+          <Split direction="horizontal" style={{ flex: 1, display: 'flex', height: '100%'}}>
             <FileManager contrast={contrast} codeStructure={codeStructure}/>
               <Split direction="vertical" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                 <TextEditor contrast={contrast} scale={scale}  setOutput={setOutput} setCodeStructure={setCodeStructure}/>
