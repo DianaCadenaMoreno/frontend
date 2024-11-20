@@ -99,7 +99,7 @@ function TextEditor({ contrast, setOutput, setCodeStructure, editorContent, setE
       <Editor
         height="260px"
         defaultLanguage="python"
-        defaultValue="Presiona CTRL+I para preguntarle a Github Copilot //Comienza a escribir para ignorar..."
+        defaultValue="Presiona CTRL+I para preguntarle al copiloto //Comienza a escribir para ignorar..."
         onChange={(value) => { setEditorContent(value); handleEditorChange(value); }} // Actualiza el estado cuando cambia el contenido del editor
         options={{
           selectOnLineNumbers: true,
