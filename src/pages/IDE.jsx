@@ -16,7 +16,8 @@ function IDE() {
   const [magnifierEnabled, setMagnifierEnabled] = React.useState(false);
   const [output, setOutput] = React.useState(null); // Añadir estado output
   const [codeStructure, setCodeStructure] = React.useState([]);
-
+  const [editorContent, setEditorContent] = React.useState('');
+  
   const handleOpenAppearanceModal = () => setIsAppearanceModalOpen(true);
   const handleCloseAppearanceModal = () => setIsAppearanceModalOpen(false);
 
@@ -40,6 +41,12 @@ function IDE() {
       window.removeEventListener('mousemove', handleMouseMove);
     };
   }, [magnifierEnabled]);
+
+  const handleFileOpen = (fileName) => {
+    // Aquí puedes agregar la lógica para cargar el contenido del archivo
+    // Por ahora, simplemente estableceremos el nombre del archivo como contenido del editor
+    setEditorContent(`Contenido del archivo: ${fileName}`);
+  };
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
@@ -88,9 +95,9 @@ function IDE() {
       <Zoom contrast={contrast} setContrast={setContrast} scale={scale} setScale={setScale} magnifierEnabled={magnifierEnabled}>
         <Navbar onOpenAppearanceModal={handleOpenAppearanceModal} />
           <Split direction="horizontal" style={{ flex: 1, display: 'flex', height: '100%'}}>
-            <FileManager contrast={contrast} codeStructure={codeStructure}/>
+            <FileManager contrast={contrast} codeStructure={codeStructure} onFileOpen={handleFileOpen}/>
               <Split direction="vertical" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <TextEditor contrast={contrast} scale={scale}  setOutput={setOutput} setCodeStructure={setCodeStructure}/>
+                <TextEditor contrast={contrast} scale={scale}  setOutput={setOutput} setCodeStructure={setCodeStructure} editorContent={editorContent} setEditorContent={setEditorContent}/>
                 <TerminalTabs contrast={contrast} scale={scale} output={output} />
               </Split>
           </Split>

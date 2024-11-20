@@ -11,8 +11,8 @@ function handleClick(event) {
   console.info('You clicked a breadcrumb.');
 }
 
-function TextEditor({ contrast, setOutput, setCodeStructure }) {
-  const [editorContent, setEditorContent] = useState(''); // Estado para almacenar el contenido del editor
+function TextEditor({ contrast, setOutput, setCodeStructure, editorContent, setEditorContent }) {
+  //const [editorContent, setEditorContent] = useState(''); // Estado para almacenar el contenido del editor
   const [isLoading, setIsLoading] = useState(false);
   //const [codeStructure, setCodeStructure] = useState([]);
 
