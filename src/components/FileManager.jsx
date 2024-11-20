@@ -64,6 +64,22 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
     }
   }, [chatHistory]);
 
+  React.useEffect(() => {
+    if (isCodeStructureOpen && window.speechSynthesis) {
+      const text = codeStructure.map(item => 
+        `${item.type} ${item.name ? `- ${item.name}` : ''} en línea ${item.line} y cierra en línea ${item.end_line}`
+      ).join('. ');
+
+      if (text.trim()) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'es-ES';
+        utterance.rate = 1.2;
+        utterance.onerror = (e) => console.error('Speech synthesis error:', e);
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+  }, [isCodeStructureOpen, codeStructure]);
+
   const handleGenerateCode = async () => {
     setLoading(true);
     try {
@@ -456,7 +472,8 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
           <Collapse in={isCodeStructureOpen}>
             <ul>
               {codeStructure.map((item, index) => (
-                <li key={index}>
+                <li key={index}
+                aria-label={`${item.type} ${item.name ? `- ${item.name}` : ''} en línea ${item.line} y cierra en línea ${item.end_line}`}>
                   {item.type} {item.name ? `- ${item.name}` : ''} en línea {item.line} y cierra en línea {item.end_line}
                 </li>
               ))}
