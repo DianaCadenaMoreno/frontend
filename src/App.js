@@ -7,16 +7,24 @@ import PRUEBA from './pages/prueba';
 
 function useScreenReader() {
   React.useEffect(() => {
+    let lastFocusedElement = null;
+    let debounceTimeout = null;
+
     const handleFocus = (event) => {
-      const element = event.target;
-      const text = element instanceof HTMLElement ? (element.getAttribute('aria-label') || element.textContent) : '';
-      if (text && window.speechSynthesis) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'es-ES';
-        utterance.rate = 2;
-        utterance.onerror = (e) => console.error('Speech synthesis error:', e);
-        window.speechSynthesis.speak(utterance);
-      }
+      clearTimeout(debounceTimeout);
+      debounceTimeout = setTimeout(() => {
+        const element = event.target;
+        if (element === lastFocusedElement) return; // Evitar manejar el mismo elemento dos veces
+        lastFocusedElement = element;
+        const text = element instanceof HTMLElement ? (element.getAttribute('aria-label') || element.textContent) : '';
+        if (text && window.speechSynthesis) {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'es-ES';
+          utterance.rate = 1.2;
+          utterance.onerror = (e) => console.error('Speech synthesis error:', e);
+          window.speechSynthesis.speak(utterance);
+        }
+      }, 100); // tiempo de debounce 
     };
 
     if (window.speechSynthesis) {
