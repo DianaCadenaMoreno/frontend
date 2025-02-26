@@ -1,9 +1,7 @@
-// src/components/TextEditor.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, Typography, Breadcrumbs, Link, Button, CircularProgress } from '@mui/material';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import Editor from '@monaco-editor/react';
-//import Terminal from './Terminal';
 import axiosInstance from '../utils/axiosInstance';
 
 function handleClick(event) {
@@ -11,10 +9,30 @@ function handleClick(event) {
   console.info('You clicked a breadcrumb.');
 }
 
-function TextEditor({ contrast, setOutput, setCodeStructure, editorContent, setEditorContent }) {
-  //const [editorContent, setEditorContent] = useState(''); // Estado para almacenar el contenido del editor
+const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, editorContent, setEditorContent }, ref) => {
   const [isLoading, setIsLoading] = useState(false);
-  //const [codeStructure, setCodeStructure] = useState([]);
+  const editorRef = useRef(null);
+
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.focus();
+    }
+  }, []);
+
+  // Función para activar el foco en el editor
+  React.useImperativeHandle(ref, () => ({
+    focusEditor: () => {
+      if (editorRef.current) {
+        const model = editorRef.current.getModel();
+        if (model) {
+          const lastLine = model.getLineCount();
+          const lastColumn = model.getLineMaxColumn(lastLine);
+          editorRef.current.setPosition({ lineNumber: lastLine, column: lastColumn });
+        }
+        editorRef.current.focus();
+      }
+    },
+  }));
 
   const breadcrumbs = [
     <Link underline="hover" key="1" color={contrast === 'high-contrast' ? '#fff' : 'inherit'} href="/" onClick={handleClick}>
@@ -43,10 +61,9 @@ function TextEditor({ contrast, setOutput, setCodeStructure, editorContent, setE
     }
   };
 
-  // Llama a handleAnalyzeStructure cuando el contenido del editor cambie
   const handleEditorChange = (value) => {
     setEditorContent(value);
-    handleAnalyzeStructure(value);  // Analiza el código en tiempo real
+    handleAnalyzeStructure(value);
 
     if (value && 'speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(value);
@@ -57,19 +74,18 @@ function TextEditor({ contrast, setOutput, setCodeStructure, editorContent, setE
     }
   };
 
-  // Función para manejar el envío del archivo .py
   const handleSendFile = async () => {
     setIsLoading(true);
-    const blob = new Blob([editorContent], { type: 'text/x-python' }); // Crear un archivo .py a partir del contenido
+    const blob = new Blob([editorContent], { type: 'text/x-python' });
     const formData = new FormData();
-    formData.append('file', blob, 'code.py'); // Agregar archivo al FormData
-    console.log(formData)
+    formData.append('file', blob, 'code.py');
+    console.log(formData);
     try {
       const response = await axiosInstance.post('run/', formData);
       const result = response.data;
       setIsLoading(false);
-      console.log(result); // Mostrar el resultado de la ejecución en consola
-      setOutput(result); // Actualizar el estado de la salida
+      console.log(result);
+      setOutput(result);
     } catch (error) {
       console.error('Error uploading file:', error);
       setIsLoading(false);
@@ -77,7 +93,7 @@ function TextEditor({ contrast, setOutput, setCodeStructure, editorContent, setE
   };
 
   return (
-    <Box>
+    <Box ref={ref}>
       <Box
         display="flex"
         justifyContent="space-between"
@@ -91,7 +107,6 @@ function TextEditor({ contrast, setOutput, setCodeStructure, editorContent, setE
         <Breadcrumbs separator={<NavigateNextIcon fontSize="small" />} aria-label="breadcrumb">
           {breadcrumbs}
         </Breadcrumbs>
-        {/* Botón para enviar el contenido del editor como archivo .py */}
         <Button variant="contained" color="success" onClick={handleSendFile} aria-label="Ejecutar archivo">
           {isLoading ? <CircularProgress size={24} color="inherit" /> : 'Ejecutar'}
         </Button>
@@ -100,7 +115,7 @@ function TextEditor({ contrast, setOutput, setCodeStructure, editorContent, setE
         height="260px"
         defaultLanguage="python"
         defaultValue="Presiona CTRL+I para preguntarle al copiloto //Comienza a escribir para ignorar..."
-        onChange={(value) => { setEditorContent(value); handleEditorChange(value); }} // Actualiza el estado cuando cambia el contenido del editor
+        onChange={(value) => { setEditorContent(value); handleEditorChange(value); }}
         options={{
           selectOnLineNumbers: true,
           minimap: { enabled: false },
@@ -111,19 +126,11 @@ function TextEditor({ contrast, setOutput, setCodeStructure, editorContent, setE
           border: 'none',
         }}
         theme={contrast === 'high-contrast' ? 'vs-dark' : 'vs-light'}
+        onMount={(editor) => {
+          editorRef.current = editor;}}
       />
-      {/* <Box>
-        <Typography variant="h6">Estructura del Código</Typography>
-        <ul>
-          {codeStructure.map((item, index) => (
-            <li key={index}>
-              {item.type} {item.name ? `- ${item.name}` : ''} en línea {item.line}
-            </li>
-          ))}
-        </ul>
-      </Box> */}
     </Box>
   );
-}
+});
 
 export default TextEditor;
