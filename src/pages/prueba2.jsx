@@ -50,12 +50,12 @@ const Magnifier = ({
   return (
     <div 
       ref={containerRef} 
-      style={{ position: 'relative' }} 
+      style={{ position: 'relative', height: '100vh' }} 
       onMouseMove={magnifierEnabled ? handleMouseMove : undefined}
       aria-label="Contenido con modo lupa"
     >
       {/* Renderizado único del contenido */}
-      <div ref={contentRef}>
+      <div ref={contentRef} style={{ height: '100vh' }}>
         {children}
       </div>
       {/* Lente que muestra el contenido clonado */}

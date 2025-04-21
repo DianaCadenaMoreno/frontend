@@ -31,7 +31,8 @@ const Navbar = React.forwardRef(({ onOpenAppearanceModal }, ref) => {
 
   useImperativeHandle(ref, () => ({
     openArchivosMenu: (event) => {
-      setAnchorElArchivos(event.currentTarget);
+      //setAnchorElArchivos(event.currentTarget);
+      setAnchorElArchivos(document.body);
       setSelectedIndex(0);
       setSelectedMenu('archivos');
     },
