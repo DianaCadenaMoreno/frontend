@@ -101,11 +101,11 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
     const position = e.position;
     const model = editorRef.current.getModel();
     const lineContent = model.getLineContent(position.lineNumber).substring(0, position.column - 1);
-
+    
     let textToSpeak = lineContent || `Line ${position.lineNumber}`;
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(textToSpeak);
-      utterance.lang = 'es-ES';
+      utterance.lang = 'es-ES'; 
       utterance.onerror = (error) => console.error('Speech synthesis error:', error);
       window.speechSynthesis.speak(utterance);
     } else {
@@ -142,7 +142,7 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
   
     // Crear una conexión WebSocket
     //const ws = new WebSocket(`ws://localhost:80/ws/terminal/`); //local
-    const ws = new WebSocket(`wss://localhost:80/ws/terminal/`); // pro
+    const ws = new WebSocket(`wss://backend-g1zl.onrender.com/ws/terminal/`); // pro
     setWsInstance(ws);
     // ws.onopen = () => {
     //   console.log('WebSocket conectado');
