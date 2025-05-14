@@ -141,7 +141,7 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
   
     // Crear una conexión WebSocket
     //const ws = new WebSocket(`ws://localhost:80/ws/terminal/`); //local
-    const ws = new WebSocket(`wss://localhost:80/ws/terminal/`); // pro
+    const ws = new WebSocket(`wss://backend-g1zl.onrender.com/ws/terminal/`); // pro
     setWsInstance(ws);
     // ws.onopen = () => {
     //   console.log('WebSocket conectado');
