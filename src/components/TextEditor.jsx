@@ -101,10 +101,11 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
     const position = e.position;
     const model = editorRef.current.getModel();
     const lineContent = model.getLineContent(position.lineNumber).substring(0, position.column - 1);
-
+    
     let textToSpeak = lineContent || `Line ${position.lineNumber}`;
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      utterance.lang = 'es-ES'; 
       utterance.onerror = (error) => console.error('Speech synthesis error:', error);
       window.speechSynthesis.speak(utterance);
     } else {
