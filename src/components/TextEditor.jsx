@@ -140,22 +140,23 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
     }
   
     // Crear una conexión WebSocket
-    const ws = new WebSocket(`ws://localhost:80/ws/terminal/`);
+    //const ws = new WebSocket(`ws://localhost:80/ws/terminal/`); //local
+    const ws = new WebSocket(`wss://localhost:80/ws/terminal/`); // pro
     setWsInstance(ws);
     // ws.onopen = () => {
     //   console.log('WebSocket conectado');
     //   // Enviar el código al WebSocket
-    //   ws.send(JSON.stringify({ code: editorContent, inputs: [] })); // Inputs puede ser dinámico si se requiere
+    //   ws.send(JSON.stringify({ code: editorContent, inputs: [] })); 
     // };
     ws.onopen = () => {
       console.log('WebSocket conectado');
       // Enviar el código al WebSocket
-      ws.send(JSON.stringify({ code: editorContent, inputs: [] })); // Inputs puede ser dinámico si se requiere
+      ws.send(JSON.stringify({ code: editorContent, inputs: [] }));
     };
   
     ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data); // Intenta analizar el mensaje como JSON
+        const data = JSON.parse(event.data); // analizar el mensaje como JSON
         if (data.status === 'output') {
           setOutput(prev => [...prev, {prompt: '', text: data.output}]);
         } else if (data.status === 'input') {
