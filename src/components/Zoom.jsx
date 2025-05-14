@@ -3,9 +3,11 @@ import { Box, IconButton } from '@mui/material';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import ContrastIcon from '@mui/icons-material/Contrast';
+import ScreenReaderIcon from '@mui/icons-material/Hearing';
 // import Magnifier from './Magnifier';
 
 function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabled }) {
+  const [screenReaderEnabled, setScreenReaderEnabled] = React.useState(true);
   const handleZoomIn = () => {
     setScale((prevScale) => Math.min(prevScale + 0.1, 3));
   };
@@ -20,8 +22,13 @@ function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabl
     );
   };
 
+  const toggleScreenReader = () => {
+    setScreenReaderEnabled((prevEnabled) => !prevEnabled);
+    // Aquí puedes añadir la lógica para activar/desactivar el lector de pantalla
+  };
+
   return (
-    <Box>
+    <Box sx={{ height:'100vh'}}>
       <Box
         id="capture-area"
         sx={{
@@ -30,7 +37,8 @@ function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabl
           backgroundColor: contrast === 'high-contrast' ? '#1e1e1e' : '#fff',
           color: contrast === 'high-contrast' ? '#fff' : '#1e1e1e',
           border: '1px solid #ddd',
-          height: '100%',
+          height: '100vh',
+          minHeight: '0px',
           width: '100%',
           transition: 'background-color 0.3s, color 0.3s',
         }}
@@ -59,6 +67,9 @@ function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabl
         </IconButton>
         <IconButton onClick={toggleContrast}>
           <ContrastIcon />
+        </IconButton>
+        <IconButton onClick={toggleScreenReader}>
+          <ScreenReaderIcon />
         </IconButton>
       </Box>
 

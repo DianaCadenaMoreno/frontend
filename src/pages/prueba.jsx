@@ -1,69 +1,61 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import Magnifier from './prueba2'; 
 
-function Magnifier() {
-  // Estados para manejar la posición del mouse y la visibilidad de la lupa
-  const [magnifierPosition, setMagnifierPosition] = useState({ x: 0, y: 0 });
-  const [isMagnifierVisible, setIsMagnifierVisible] = useState(false);
-
-  // Función para actualizar la posición del mouse
-  const handleMouseMove = (e) => {
-    setMagnifierPosition({ x: e.clientX, y: e.clientY });
-  };
-
-  // Mostrar la lupa solo cuando se mueve el mouse
-  useEffect(() => {
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-    };
-  }, []);
-
-  // Mostrar y ocultar la lupa cuando el mouse entra o sale de la ventana
-  useEffect(() => {
-    const handleMouseEnter = () => setIsMagnifierVisible(true);
-    const handleMouseLeave = () => setIsMagnifierVisible(false);
-
-    window.addEventListener('mouseenter', handleMouseEnter);
-    window.addEventListener('mouseleave', handleMouseLeave);
-
-    return () => {
-      window.removeEventListener('mouseenter', handleMouseEnter);
-      window.removeEventListener('mouseleave', handleMouseLeave);
-    };
-  }, []);
+const InteractiveDemo = () => {
+  const [counter, setCounter] = useState(0);
+  const [inputValue, setInputValue] = useState('');
+  const [showDynamic, setShowDynamic] = useState(false);
 
   return (
-    <div style={{ height: '100vh', overflow: 'hidden' }}>
-      {/* Contenido normal de la página */}
-      <h1>Página con lupa</h1>
+    <div style={{ padding: '20px' }}>
+      <h2>Demo de Lupa Interactiva</h2>
       <p>
-        Mueve el mouse sobre esta página para ver el efecto de la lupa.
+        Activa la lupa (siempre activa en este ejemplo) y prueba a interactuar: 
+        haz click en el botón para incrementar el contador, escribe en el input o muestra el componente dinámico.
       </p>
+      <Magnifier active={true} magnification={2} lensDiameter={200}>
+        <div style={{ padding: '20px', border: '1px solid #ccc' }}>
+          {/* Botón para incrementar el contador */}
+          <button onClick={() => setCounter(counter + 1)}>
+            Click aquí: {counter}
+          </button>
+          <br /><br />
 
-      {/* Lupa */}
-      {isMagnifierVisible && (
-        <div
-          style={{
-            position: 'absolute',
-            top: magnifierPosition.y - 100, // Ajusta el tamaño de la lupa
-            left: magnifierPosition.x - 100,
-            width: '200px', // Tamaño de la lupa
-            height: '200px',
-            borderRadius: '50%',
-            backgroundColor: 'rgba(255, 255, 255, 0.3)', // Fondo translúcido
-            border: '2px solid rgba(0, 0, 0, 0.2)', // Borde
-            overflow: 'hidden',
-            zIndex: 1000,
-            pointerEvents: 'none',
-            backgroundImage: `url('https://via.placeholder.com/1200')`, // Imagen para la lupa
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: `-${magnifierPosition.x * 2 - 100}px -${magnifierPosition.y * 2 - 100}px`, // Mover la imagen al revés para hacer zoom
-            backgroundSize: '200%', // Doble tamaño para efecto de zoom
-          }}
-        ></div>
-      )}
+          {/* Campo de texto interactivo */}
+          <input 
+            type="text" 
+            placeholder="Escribe algo..." 
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            style={{ padding: '8px', width: '200px' }}
+          />
+          <br /><br />
+
+          {/* Botón para mostrar/ocultar un componente dinámico */}
+          <button onClick={() => setShowDynamic(!showDynamic)}>
+            {showDynamic ? 'Ocultar' : 'Mostrar'} componente dinámico
+          </button>
+          <br /><br />
+
+          {/* Componente dinámico que muestra un texto actualizable */}
+          {showDynamic && <DynamicComponent />}
+        </div>
+      </Magnifier>
     </div>
   );
-}
+};
 
-export default Magnifier;
+const DynamicComponent = () => {
+  const [text, setText] = useState('Texto inicial');
+
+  return (
+    <div style={{ marginTop: '10px', padding: '10px', background: '#e0f7fa' }}>
+      <p>{text}</p>
+      <button onClick={() => setText('Texto actualizado a las ' + new Date().toLocaleTimeString())}>
+        Actualizar Texto
+      </button>
+    </div>
+  );
+};
+
+export default InteractiveDemo;

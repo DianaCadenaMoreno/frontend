@@ -249,7 +249,10 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
   };
   
   return (
-     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' , flex: 0.3}}>
+     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' , flex: 0.3,
+      backgroundColor: contrast === 'high-contrast' ? '#1e1e1e' : 'inherit',
+      color: contrast === 'high-contrast' ? '#fff' : 'inherit',
+     }}>
       <Tabs value={tabIndex} onChange={handleTabChange} aria-label="File Manager Tabs" 
         textColor={contrast === 'high-contrast' ? 'inherit' : 'primary'}
         indicatorColor={'primary'}>
@@ -257,10 +260,10 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
         <Tab label="Chat" />
         {/* pestañas */}
       </Tabs>
-      <Box sx={{ flexGrow: 1, p: 3, display: 'flex', flexDirection: 'column', justifyContent: 'space-between'}}>
+      <Box >
         {tabIndex === 1 && (
           <div>
-            <Box sx={{ flexGrow: 1, overflowX: 'auto', mb: 2, height: '380px' }}>
+            <Box sx={{ flexGrow: 1, overflowX: 'auto', mb: 2, maxHeight: '50vh', height:'50vh', padding: 2 }}>
               <Typography variant="h6" component="h2" aria-live="polite">
                 Bienvenido a tu copiloto, estoy aquí para ayudarte a hacer las cosas más rápido.
               </Typography>
@@ -279,7 +282,7 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
                 // <pre style={{ color: contrast === 'high-contrast' ? '#fff' : '#000' }}>{generatedCode}</pre>
               )}
             </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', padding: 2 }}>
             <TextField
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
@@ -308,7 +311,7 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
         )}
         {/* contenido para otras pestañas */}
         {tabIndex === 0 && (
-          <Box className="file-manager">
+          <Box className="file-manager" sx={{padding: 2, maxHeight: '72vh', height:'72vh'}}>
           {files.length === 0 && folders.length === 0 ? (
             <>
             <Typography>Aún no hay ningún archivo abierto, puedes realizar las siguientes acciones:</Typography>
@@ -461,7 +464,8 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
             </ul>
           </Collapse>
         </Box> */}
-        <Box >
+        <Box sx={{ position: 'relative', flexGrow: 1, padding: 2 }}>
+        
           {/* <Typography variant="h6">Estructura del Código</Typography> */}
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <Typography>Estructura del Código</Typography>
@@ -470,15 +474,35 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
             </IconButton>
           </Box>
           <Collapse in={isCodeStructureOpen}>
-            <ul>
-              {codeStructure.map((item, index) => (
-                <li key={index}
-                aria-label={`${item.type} ${item.name ? `- ${item.name}` : ''} en línea ${item.line} y cierra en línea ${item.end_line}`}>
-                  {item.type} {item.name ? `- ${item.name}` : ''} en línea {item.line} y cierra en línea {item.end_line}
-                </li>
-              ))}
-            </ul>
+            <Box
+              sx={{
+                overflowY: 'auto', // Habilita el scroll vertical
+                maxHeight: '20%',
+                padding: '8px', // Opcional: agrega un poco de padding
+              }}
+            >
+              <List>
+                {codeStructure.map((item, index) => (
+                  <ListItem
+                    key={index}
+                    sx={{
+                      borderBottom: '1px solid',
+                      borderColor: contrast === 'high-contrast' ? '#444' : '#ddd',
+                      padding: '8px 0',
+                    }}
+                  >
+                    <Typography
+                      aria-label={`${item.type} ${item.name ? `- ${item.name}` : ''} en línea ${item.line} y cierra en línea ${item.end_line}`}
+                      sx={{ fontSize: '14px' }}
+                    >
+                      {item.type} {item.name ? `- ${item.name}` : ''} en línea {item.line} y cierra en línea {item.end_line}
+                    </Typography>
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
           </Collapse>
+      
         </Box>
       </Box>
         

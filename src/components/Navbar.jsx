@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useImperativeHandle, useState } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -18,17 +18,87 @@ const menuItems = {
   ayuda: ['Bienvenida', 'Ver todos los comandos', 'Documentación', 'Manual de usuario'],
 };
 
-function Navbar({ onOpenAppearanceModal }) {
+const Navbar = React.forwardRef(({ onOpenAppearanceModal }, ref) => {
   const [anchorElNav, setAnchorElNav] = React.useState(null);
   const [anchorElArchivos, setAnchorElArchivos] = React.useState(null);
   const [anchorElAjustes, setAnchorElAjustes] = React.useState(null);
   const [anchorElAyuda, setAnchorElAyuda] = React.useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedMenu, setSelectedMenu] = useState('archivos');
 
   const handleMenuOpen = (setter) => (event) => setter(event.currentTarget);
   const handleMenuClose = (setter) => () => setter(null);
 
+  useImperativeHandle(ref, () => ({
+    openArchivosMenu: (event) => {
+      //setAnchorElArchivos(event.currentTarget);
+      setAnchorElArchivos(document.body);
+      setSelectedIndex(0);
+      setSelectedMenu('archivos');
+    },
+  }));
+
+  // Manejo de teclas para navegación
+  // const handleKeyDown = (event) => {
+  //   const currentMenuItems = menuItems[selectedMenu];
+  //   if (!anchorElArchivos && !anchorElAjustes && !anchorElAyuda) return;
+
+  //   if (event.key === 'ArrowDown') {
+  //     event.preventDefault();
+  //     setSelectedIndex((prev) => (prev + 1) % currentMenuItems.length);
+  //   } else if (event.key === 'ArrowUp') {
+  //     event.preventDefault();
+  //     setSelectedIndex((prev) => (prev - 1 + currentMenuItems.length) % currentMenuItems.length);
+  //   } else if (event.key === 'ArrowRight') {
+  //     event.preventDefault();
+  //     const menuKeys = Object.keys(menuItems);
+  //     const nextMenuIndex = (menuKeys.indexOf(selectedMenu) + 1) % menuKeys.length;
+  //     setSelectedMenu(menuKeys[nextMenuIndex]);
+  //     setSelectedIndex(0);
+  //   } else if (event.key === 'ArrowLeft') {
+  //     event.preventDefault();
+  //     const menuKeys = Object.keys(menuItems);
+  //     const prevMenuIndex = (menuKeys.indexOf(selectedMenu) - 1 + menuKeys.length) % menuKeys.length;
+  //     setSelectedMenu(menuKeys[prevMenuIndex]);
+  //     setSelectedIndex(0);
+  //   } else if (event.key === 'Enter') {
+  //     event.preventDefault();
+  //     console.log(`Seleccionado: ${currentMenuItems[selectedIndex]}`);
+  //     handleMenuClose(selectedMenu === 'archivos' ? setAnchorElArchivos : selectedMenu === 'ajustes' ? setAnchorElAjustes : setAnchorElAyuda)();
+  //   }
+  // };
+
+  const handleKeyDown = (event) => {
+    const currentMenuItems = menuItems[selectedMenu];
+    if (!anchorElArchivos && !anchorElAjustes && !anchorElAyuda) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setSelectedIndex((prev) => (prev + 1) % currentMenuItems.length);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setSelectedIndex((prev) => (prev - 1 + currentMenuItems.length) % currentMenuItems.length);
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      const menuKeys = Object.keys(menuItems);
+      const nextMenuIndex = (menuKeys.indexOf(selectedMenu) + 1) % menuKeys.length;
+      setSelectedMenu(menuKeys[nextMenuIndex]);
+      setSelectedIndex(0);
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      const menuKeys = Object.keys(menuItems);
+      const prevMenuIndex = (menuKeys.indexOf(selectedMenu) - 1 + menuKeys.length) % menuKeys.length;
+      setSelectedMenu(menuKeys[prevMenuIndex]);
+      setSelectedIndex(0);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      console.log(`Seleccionado: ${currentMenuItems[selectedIndex]}`);
+      handleMenuClose(selectedMenu === 'archivos' ? setAnchorElArchivos : selectedMenu === 'ajustes' ? setAnchorElAjustes : setAnchorElAyuda)();
+    }
+  };
+
   return (
-    <AppBar position="static" sx={{ bgcolor: '#101B23' }}>
+    <AppBar position="static" sx={{ bgcolor: '#101B23' }} ref={ref} onKeyDown={handleKeyDown}>
       <Container maxWidth="xl">
         <Toolbar disableGutters>
           <AdbIcon sx={{ display: { xs: 'none', md: 'flex' }, mr: 1 }} />
@@ -120,11 +190,11 @@ function Navbar({ onOpenAppearanceModal }) {
                   open={Boolean(key === 'archivos' ? anchorElArchivos : key === 'ajustes' ? anchorElAjustes : anchorElAyuda)}
                   onClose={handleMenuClose(key === 'archivos' ? setAnchorElArchivos : key === 'ajustes' ? setAnchorElAjustes : setAnchorElAyuda)}
                 >
-                  {items.map((item) => (
+                  {items.map((item, index) => (
                     <Button
                       key={item}
                       onClick={item === 'Apariencia' ? onOpenAppearanceModal : handleMenuClose(key === 'archivos' ? setAnchorElArchivos : setAnchorElAyuda)}
-                      sx={{color:'white', width: '100%', justifyContent: 'flex-start' }}
+                      sx={{color:'white', width: '100%', justifyContent: 'flex-start', backgroundColor: selectedIndex === index && selectedMenu === key ? '#333' : 'inherit' }}
                     >
                       {item}
                     </Button>
@@ -137,6 +207,6 @@ function Navbar({ onOpenAppearanceModal }) {
       </Container>
     </AppBar>
   );
-}
+});
 
 export default Navbar;
