@@ -263,7 +263,7 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
       <Box >
         {tabIndex === 1 && (
           <div>
-            <Box sx={{ flexGrow: 1, overflowX: 'auto', mb: 2, height: '100%', padding: 2 }}>
+            <Box sx={{ flexGrow: 1, overflowX: 'auto', mb: 2, maxHeight: '50vh', height:'50vh', padding: 2 }}>
               <Typography variant="h6" component="h2" aria-live="polite">
                 Bienvenido a tu copiloto, estoy aquí para ayudarte a hacer las cosas más rápido.
               </Typography>
@@ -311,7 +311,7 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
         )}
         {/* contenido para otras pestañas */}
         {tabIndex === 0 && (
-          <Box className="file-manager" sx={{padding: 2}}>
+          <Box className="file-manager" sx={{padding: 2, maxHeight: '72vh', height:'72vh'}}>
           {files.length === 0 && folders.length === 0 ? (
             <>
             <Typography>Aún no hay ningún archivo abierto, puedes realizar las siguientes acciones:</Typography>

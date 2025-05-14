@@ -16,7 +16,7 @@ function IDE() {
   const [scale, setScale] = React.useState(1);
   const [isAppearanceModalOpen, setIsAppearanceModalOpen] = React.useState(false);
   const [magnifierEnabled, setMagnifierEnabled] = React.useState(false);
-  const [output, setOutput] = React.useState(null);
+  const [output, setOutput] = React.useState([]);
   const [codeStructure, setCodeStructure] = React.useState([]);
   const [editorContent, setEditorContent] = React.useState('');
 
@@ -110,7 +110,7 @@ function IDE() {
             <FileManager ref={fileManagerRef} contrast={contrast} codeStructure={codeStructure} onFileOpen={handleFileOpen} />
             <Split direction="vertical" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
               <TextEditor ref={textEditorRef} contrast={contrast} scale={scale} setOutput={setOutput} setCodeStructure={setCodeStructure} editorContent={editorContent} setEditorContent={setEditorContent} setPid={setPid} />
-              <TerminalTabs ref={terminalTabsRef} contrast={contrast} scale={scale} output={output} pid={pid} onDebug={0} />
+              <TerminalTabs ref={terminalTabsRef} contrast={contrast} scale={scale} output={output} pid={pid} onDebug={0} textEditorRef={textEditorRef}/>
             </Split>
           </Split>
         </Zoom>

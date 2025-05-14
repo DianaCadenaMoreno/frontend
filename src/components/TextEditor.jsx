@@ -40,20 +40,20 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
   }));
 
   const breadcrumbs = [
-    <Link underline="hover" key="1" color={contrast === 'high-contrast' ? '#fff' : 'inherit'} href="/" onClick={handleClick}>
-      MUI
-    </Link>,
-    <Link
-      underline="hover"
-      key="2"
-      color={contrast === 'high-contrast' ? '#fff' : 'inherit'}
-      href="/material-ui/getting-started/installation/"
-      onClick={handleClick}
-    >
-      Core
-    </Link>,
+    // <Link underline="hover" key="1" color={contrast === 'high-contrast' ? '#fff' : 'inherit'} href="/" onClick={handleClick}>
+    //   MUI
+    // </Link>,
+    // <Link
+    //   underline="hover"
+    //   key="2"
+    //   color={contrast === 'high-contrast' ? '#fff' : 'inherit'}
+    //   href="/material-ui/getting-started/installation/"
+    //   onClick={handleClick}
+    // >
+    //   Core
+    // </Link>,
     <Typography key="3" color={contrast === 'high-contrast' ? '#fff' : 'text.primary'}>
-      Breadcrumb
+      file.py
     </Typography>,
   ];
 
@@ -131,6 +131,8 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
   //     setIsLoading(false);
   //   }
   // };
+  const [wsInstance, setWsInstance] = useState(null);
+
   const handleSendFile = () => {
     if (!editorContent.trim()) {
       console.error('No hay código para ejecutar.');
@@ -138,8 +140,13 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
     }
   
     // Crear una conexión WebSocket
-    const ws = new WebSocket(`ws://localhost:80/ws/terminal/?pid=1`); // Puedes generar un PID único si es necesario
-  
+    const ws = new WebSocket(`ws://localhost:80/ws/terminal/`);
+    setWsInstance(ws);
+    // ws.onopen = () => {
+    //   console.log('WebSocket conectado');
+    //   // Enviar el código al WebSocket
+    //   ws.send(JSON.stringify({ code: editorContent, inputs: [] })); // Inputs puede ser dinámico si se requiere
+    // };
     ws.onopen = () => {
       console.log('WebSocket conectado');
       // Enviar el código al WebSocket
@@ -147,16 +154,21 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
     };
   
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.status === 'output') {
-        setOutput((prevOutput) => prevOutput + '\n' + data.output); // Agregar la salida al estado
-      } else if (data.status === 'input') {
-        console.log(`Se solicita entrada: ${data.prompt}`);
-        // Aquí podrías manejar la entrada del usuario si es necesario
-      } else if (data.status === 'error') {
-        console.error(`Error: ${data.error}`);
-      } else if (data.status === 'success') {
-        console.log('Ejecución completada:', data.output);
+      try {
+        const data = JSON.parse(event.data); // Intenta analizar el mensaje como JSON
+        if (data.status === 'output') {
+          setOutput(prev => [...prev, {prompt: '', text: data.output}]);
+        } else if (data.status === 'input') {
+          setOutput(prev => [...prev, {prompt: data.prompt, text: ''}]);
+        } else if (data.status === 'error') {
+          console.error(`Error: ${data.error}`);
+        } else if (data.status === 'success') {
+          console.log('Ejecución completada:', data.output);
+        }
+      } catch (error) {
+        // Si no es un JSON válido, simplemente muestra el mensaje como texto
+        console.warn('Mensaje no JSON recibido:', event.data);
+        setOutput((prevOutput) => prevOutput + '\n' + event.data);
       }
     };
   
@@ -168,6 +180,10 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
       console.log('WebSocket desconectado');
     };
   };
+
+  React.useImperativeHandle(ref, () => ({
+    getWebSocket: () => wsInstance,
+  }));  
 
   const handleBreakpointClick = async (e) => {
     const monaco = await loader.init(); // Inicializa monaco
