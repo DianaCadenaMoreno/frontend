@@ -39,6 +39,19 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
     },
   }));
 
+  const getEditorTheme = (contrast) => {
+    switch(contrast) {
+      case 'high-contrast':
+        return 'vs-dark';
+      case 'blue-contrast':
+        return 'hc-black'; // O crear un tema personalizado
+      case 'yellow-contrast':
+        return 'vs'; // O crear un tema personalizado
+      default:
+        return 'vs-light';
+    }
+  };
+
   const breadcrumbs = [
     // <Link underline="hover" key="1" color={contrast === 'high-contrast' ? '#fff' : 'inherit'} href="/" onClick={handleClick}>
     //   MUI
@@ -363,7 +376,7 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
               glyphMargin: true,
               border: 'none',
             }}
-            theme={contrast === 'high-contrast' ? 'vs-dark' : 'vs-light'}
+            theme={getEditorTheme(contrast)}
             onMount={(editor) => {
               editorRef.current = editor;
               editor.onDidChangeCursorPosition(handleCursorChange);

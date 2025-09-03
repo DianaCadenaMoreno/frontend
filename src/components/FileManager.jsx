@@ -1,24 +1,27 @@
-// src/components/FileManager.js
 import React from 'react';
-import { Box, Tabs, Tab, Typography, TextField, IconButton, CircularProgress, Button, Collapse, Menu, MenuItem, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, List, ListItem, ListItemText } from '@mui/material';
+import Split from 'react-split';
+import { Box, Tabs, Tab, Typography, TextField, IconButton, CircularProgress, Button, Collapse, Menu, MenuItem, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, List, ListItem, ListItemText, Tooltip } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import MicIcon from '@mui/icons-material/Mic';
 import { InsertDriveFile } from '@mui/icons-material';
 import { CreateNewFolder } from '@mui/icons-material';
 import { Folder } from '@mui/icons-material';
 import { FolderOpen } from '@mui/icons-material';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import AddIcon from '@mui/icons-material/Add';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import NoteAddIcon from '@mui/icons-material/NoteAdd';
 import generateCode from '../utils/chat';
 import useSpeechRecognition from '../utils/speech';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { ExpandLess } from '@mui/icons-material';
-import { ExpandMore } from '@mui/icons-material';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../styles/FileManager.css'
 
-function FileManager({ contrast, codeStructure, onFileOpen }) {
+function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleCollapse, ...props }) {
   const [files, setFiles] = React.useState(() => JSON.parse(localStorage.getItem('files')) || []);
   const [folders, setFolders] = React.useState(() => JSON.parse(localStorage.getItem('folders')) || []);
   const [contextMenu, setContextMenu] = React.useState(null);
@@ -29,15 +32,14 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
   const [newName, setNewName] = React.useState('');
   const [isFile, setIsFile] = React.useState(true);
   const [openFolders, setOpenFolders] = React.useState({});
-  // const [generatedCode, setGeneratedCode] = React.useState('');
   const [chatHistory, setChatHistory] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const { isListening, transcript, setIsListening } = useSpeechRecognition();
-  const [isCodeStructureOpen, setIsCodeStructureOpen] = React.useState(false);
+  const [isCodeStructureOpen, setIsCodeStructureOpen] = React.useState(true);
 
   React.useEffect(() => {
     if (transcript) {
-      setPrompt(prevPrompt => `${prevPrompt} ${transcript}`);
+      setPrompt(transcript);
     }
   }, [transcript]);
   
@@ -45,56 +47,143 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
     setTabIndex(newIndex);
   };
 
-  // const handleGenerateCode = () => {
-  //   generateCode(prompt, setGeneratedCode, setLoading);
-  // };
   React.useEffect(() => {
     if (chatHistory.length > 0) {
-      const lastMessage = chatHistory[chatHistory.length - 1].content;
-      if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(lastMessage);
-        utterance.lang = 'es-ES';
-        utterance.onerror = (e) => console.error('Speech synthesis error:', e);
-        utterance.onstart = () => console.log('Speech synthesis started');
-        utterance.onend = () => console.log('Speech synthesis ended');
-        window.speechSynthesis.speak(utterance);
-      } else {
-        console.error('Speech synthesis not supported in this browser.');
-      }
-    }
-  }, [chatHistory]);
-
-  React.useEffect(() => {
-    if (isCodeStructureOpen && window.speechSynthesis) {
-      const text = codeStructure.map(item => 
-        `${item.type} ${item.name ? `- ${item.name}` : ''} en línea ${item.line} y cierra en línea ${item.end_line}`
-      ).join('. ');
-
-      if (text.trim()) {
-        const utterance = new SpeechSynthesisUtterance(text);
+      const lastMessage = chatHistory[chatHistory.length - 1];
+      if (lastMessage.role === 'assistant' && 'speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(lastMessage.content);
         utterance.lang = 'es-ES';
         utterance.rate = 1.2;
         utterance.onerror = (e) => console.error('Speech synthesis error:', e);
         window.speechSynthesis.speak(utterance);
       }
     }
-  }, [isCodeStructureOpen, codeStructure]);
+  }, [chatHistory]);
+
+  // Auto-abrir estructura del código cuando hay contenido
+  React.useEffect(() => {
+    if (codeStructure && codeStructure.length > 0) {
+      setIsCodeStructureOpen(true);
+    }
+  }, [codeStructure]);
 
   const handleGenerateCode = async () => {
+    if (!prompt.trim()) return;
+    
     setLoading(true);
+    const newChatHistory = [...chatHistory, { role: 'user', content: prompt }];
+    setChatHistory(newChatHistory);
+    
     try {
-      const response = await generateCode(prompt, setLoading, chatHistory);
-      setChatHistory(prevHistory => [
-        ...prevHistory,
-        { role: 'user', content: prompt },
-        { role: 'model', content: response },
-      ]);
-      setPrompt('');
+      await generateCode(prompt, (response) => {
+        setChatHistory(prev => [...prev, { role: 'assistant', content: response }]);
+      }, setLoading);
     } catch (error) {
-      console.error("Error al generar código:", error);
-    } finally {
-      setLoading(false);
+      console.error('Error generating code:', error);
+      setChatHistory(prev => [...prev, { role: 'assistant', content: 'Lo siento, hubo un error al generar el código.' }]);
     }
+    
+    setPrompt('');
+    setLoading(false);
+  };
+
+  const handleCreateFile = () => {
+    setIsFile(true);
+    setNewName('');
+    setDialogOpen(true);
+  };
+
+  const handleCreateFolder = () => {
+    setIsFile(false);
+    setNewName('');
+    setDialogOpen(true);
+  };
+
+  const handleOpenFile = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.py,.js,.jsx,.ts,.tsx,.txt,.md,.json,.html,.css';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const newFile = {
+            id: Date.now(),
+            name: file.name,
+            content: event.target.result,
+            type: 'file'
+          };
+          setFiles(prev => [...prev, newFile]);
+          onFileOpen(newFile.name, event.target.result);
+        };
+        reader.readAsText(file);
+      }
+    };
+    input.click();
+  };
+
+  const handleOpenFolder = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.webkitdirectory = true;
+    input.onchange = (e) => {
+      const files = Array.from(e.target.files);
+      const folderName = files[0]?.webkitRelativePath.split('/')[0] || 'Nueva Carpeta';
+      
+      const newFolder = {
+        id: Date.now(),
+        name: folderName,
+        files: files.map(file => ({
+          id: Date.now() + Math.random(),
+          name: file.name,
+          path: file.webkitRelativePath,
+          content: '', // Aquí podrías leer el contenido si es necesario
+          type: 'file'
+        })),
+        type: 'folder'
+      };
+      
+      setFolders(prev => [...prev, newFolder]);
+    };
+    input.click();
+  };
+
+  const handleDialogConfirm = () => {
+    if (!newName.trim()) return;
+    
+    if (isFile) {
+      const newFile = {
+        id: Date.now(),
+        name: newName.includes('.') ? newName : `${newName}.txt`,
+        content: '',
+        type: 'file'
+      };
+      setFiles(prev => [...prev, newFile]);
+      onFileOpen(newFile.name, '');
+    } else {
+      const newFolder = {
+        id: Date.now(),
+        name: newName,
+        files: [],
+        type: 'folder'
+      };
+      setFolders(prev => [...prev, newFolder]);
+    }
+    
+    setDialogOpen(false);
+    setNewName('');
+  };
+
+  const handleFileClick = (file) => {
+    onFileOpen(file.name, file.content || '');
+  };
+
+  const toggleFolder = (folderId) => {
+    setOpenFolders(prev => ({
+      ...prev,
+      [folderId]: !prev[folderId]
+    }));
   };
 
   const updatedChatHistory = chatHistory.map(message => ({
@@ -144,7 +233,11 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
   );
 
   const handleMicClick = () => {
-    setIsListening(prevState => !prevState);
+    if (isListening) {
+      setIsListening(false);
+    } else {
+      setIsListening(true);
+    }
   };
 
   React.useEffect(() => {
@@ -155,357 +248,693 @@ function FileManager({ contrast, codeStructure, onFileOpen }) {
     localStorage.setItem('folders', JSON.stringify(folders));
   }, [folders]);
 
-  const handleCreateFile = () => {
-    setIsFile(true);
-    setDialogOpen(true);
-  };
+  // Verificar si hay contenido en la estructura del código
+  const hasCodeStructure = codeStructure && codeStructure.length > 0;
 
-  const handleCreateFolder = () => {
-    setIsFile(false);
-    setDialogOpen(true);
-  };
-
-  const handleDialogClose = () => {
-    setDialogOpen(false);
-    setNewName('');
-  };
-
-  const handleDialogSubmit = () => {
-    if (newName) {
-      if (isFile) {
-        setFiles([...files, newName]);
-      } else {
-        setFolders([...folders, newName]);
-      }
-    }
-    handleDialogClose();
-  };
-
-  const handleContextMenu = (event, item) => {
-    event.preventDefault();
-    setSelectedItem(item);
-    setContextMenu(
-      contextMenu === null
-        ? { mouseX: event.clientX - 2, mouseY: event.clientY - 4 }
-        : null,
-    );
-  };
-
-  const handleClose = () => {
-    setContextMenu(null);
-  };
-
-  const handleRename = () => {
-    const newName = prompt('Enter new name:', selectedItem);
-    if (newName) {
-      if (files.includes(selectedItem)) {
-        setFiles(files.map(file => (file === selectedItem ? newName : file)));
-      } else {
-        setFolders(folders.map(folder => (folder === selectedItem ? newName : folder)));
-      }
-    }
-    handleClose();
-  };
-
-  const handleDelete = () => {
-    if (files.includes(selectedItem)) {
-      setFiles(files.filter(file => file !== selectedItem));
-    } else {
-      setFolders(folders.filter(folder => folder !== selectedItem));
-    }
-    handleClose();
-  };
-
-  const handleFileUpload = (event) => {
-    const uploadedFiles = Array.from(event.target.files).map(file => file.name);
-    setFiles([...files, ...uploadedFiles]);
-  };
-
-  const handleFolderUpload = (event) => {
-    const uploadedFolders = Array.from(event.target.files).reduce((acc, file) => {
-      const pathParts = file.webkitRelativePath.split('/');
-      const folderName = pathParts[0];
-      const fileName = pathParts.slice(1).join('/');
-      if (!acc[folderName]) {
-        acc[folderName] = [];
-      }
-      acc[folderName].push(fileName);
-      return acc;
-    }, {});
-
-    const newFolders = Object.keys(uploadedFolders).map(folderName => ({
-      name: folderName,
-      files: uploadedFolders[folderName],
-    }));
-
-    setFolders([...folders, ...newFolders]);
-  };
-
-  const handleToggleFolder = (folderName) => {
-    setOpenFolders(prevOpenFolders => ({
-      ...prevOpenFolders,
-      [folderName]: !prevOpenFolders[folderName],
-    }));
-  };
-  
   return (
-     <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' , flex: 0.3,
-      backgroundColor: contrast === 'high-contrast' ? '#1e1e1e' : 'inherit',
-      color: contrast === 'high-contrast' ? '#fff' : 'inherit',
-     }}>
-      <Tabs value={tabIndex} onChange={handleTabChange} aria-label="File Manager Tabs" 
-        textColor={contrast === 'high-contrast' ? 'inherit' : 'primary'}
-        indicatorColor={'primary'}>
-        <Tab label="Archivos" />
-        <Tab label="Chat" />
-        {/* pestañas */}
-      </Tabs>
-      <Box >
-        {tabIndex === 1 && (
-          <div>
-            <Box sx={{ flexGrow: 1, overflowX: 'auto', mb: 2, maxHeight: '50vh', height:'50vh', padding: 2 }}>
-              <Typography variant="h6" component="h2" aria-live="polite">
-                Bienvenido a tu copiloto, estoy aquí para ayudarte a hacer las cosas más rápido.
-              </Typography>
-              {loading ? (
-                <CircularProgress color={contrast === 'high-contrast' ? 'inherit' : 'primary'}/>
-              ) : (
-                // <div>
-                //   {chatHistory.map((message, index) => (
-                //     <Typography key={index} style={{ color: contrast === 'high-contrast' ? '#fff' : '#000' }}>
-                //       <strong>{message.role === 'user' ? 'Tú: ' : 'Copiloto: '}</strong>
-                //       {message.content}
-                //     </Typography>
-                //   ))}
-                // </div>
-                <ChatHistory chatHistory={chatHistory} contrast={contrast} /> 
-                // <pre style={{ color: contrast === 'high-contrast' ? '#fff' : '#000' }}>{generatedCode}</pre>
-              )}
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', padding: 2 }}>
-            <TextField
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Escribe o pregunta algo a tu copiloto..."
-                fullWidth
-                multiline
-                rows={2}
-                variant="outlined"
-                aria-label="Descripción del código"
-                InputProps={{
-                  style: { color: contrast === 'high-contrast' ? '#fff' : '#000' },
-                  endAdornment: (
-                    <>
-                    <IconButton onClick={handleMicClick} color={isListening ? "error" : contrast === 'high-contrast' ? "inherit" : "primary"}>
-                      <MicIcon />
-                    </IconButton>
-                    <IconButton onClick={handleGenerateCode} color={contrast === 'high-contrast' ? "inherit" : "primary"}>
-                      <SendIcon />
-                    </IconButton>
-                    </>
-                  ),
-                }}
-              />
-            </Box>
-          </div>
-        )}
-        {/* contenido para otras pestañas */}
-        {tabIndex === 0 && (
-          <Box className="file-manager" sx={{padding: 2, maxHeight: '72vh', height:'72vh'}}>
-          {files.length === 0 && folders.length === 0 ? (
-            <>
-            <Typography>Aún no hay ningún archivo abierto, puedes realizar las siguientes acciones:</Typography>
-            <div className="button-container">
-              <Button onClick={handleCreateFile} aria-label="Crear archivo">Crear archivo</Button>
-              <Button onClick={handleCreateFolder} aria-label="Crear carpeta">Crear carpeta</Button>
-              <Button aria-label="Abrir archivo">
-                <label htmlFor="file-upload" style={{ cursor: 'pointer' }}>
-                  Abrir archivo
-                </label>
-                <input
-                  id="file-upload"
-                  type="file"
-                  style={{ display: 'none' }}
-                  onChange={handleFileUpload}
-                />
-              </Button>
-              <Button aria-label="Abrir carpeta">
-              <label htmlFor="folder-upload" style={{ cursor: 'pointer' }}>
-                  Abrir carpeta
-                </label>
-                <input
-                  id="folder-upload"
-                  type="file"
-                  style={{ display: 'none' }}
-                  onChange={handleFolderUpload}
-                />
-              </Button>
-            </div>
-          </>
-          ) : (
-            <>
-              <div className="icon-container">
-                <IconButton onClick={handleCreateFile} aria-label="Crear archivo">
-                  <InsertDriveFile />
-                </IconButton>
-                <IconButton onClick={handleCreateFolder} aria-label="Crear carpeta">
-                  <CreateNewFolder />
-                </IconButton>
-                <IconButton aria-label="Abrir archivo">
-                <label htmlFor="file-upload" style={{ cursor: 'pointer' }}>
-                  <FolderOpen />
-                </label>
-                <input
-                  id="file-upload"
-                  type="file"
-                  style={{ display: 'none' }}
-                  onChange={handleFileUpload}
-                />
-                </IconButton>
-                <IconButton aria-label="Abrir carpeta">
-                <label htmlFor="folder-upload" style={{ cursor: 'pointer' }}>
-                  <Folder />
-                </label>
-                <input
-                  id="folder-upload"
-                  type="file"
-                  webkitdirectory="true"
-                  directory="true"
-                  style={{ display: 'none' }}
-                  onChange={handleFolderUpload}
-                />
-                </IconButton>
-              </div>
-              <Box className="file-list">
-                {folders.map(folder => (
-                  <div key={folder.name}>
-                    <ListItem onClick={() => handleToggleFolder(folder.name)}>
-                      <ListItemText primary={folder.name} />
-                      {openFolders[folder.name] ? <ExpandLess /> : <ExpandMore />}
-                    </ListItem>
-                    <Collapse in={openFolders[folder.name]} timeout="auto" unmountOnExit>
-                      <List component="div" disablePadding>
-                        {folder.files.map(file => (
-                          <ListItem key={file} button onContextMenu={(e) => handleContextMenu(e, file)}>
-                            <ListItemText primary={file} />
-                          </ListItem>
-                        ))}
-                      </List>
-                    </Collapse>
-                  </div>
-                ))}
-                {files.map(file => (
-                  <Typography
-                    key={file}
-                    onClick={() => onFileOpen(file)}
-                    onContextMenu={(e) => handleContextMenu(e, file)}
-                    aria-label={`Archivo ${file}`}
-                  >
-                    {file}
-                  </Typography>
-                ))}
-              </Box>
-            </>
-          )}
-          <Menu
-            open={contextMenu !== null}
-            onClose={handleClose}
-            anchorReference="anchorPosition"
-            anchorPosition={
-              contextMenu !== null
-                ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
-                : undefined
-            }
+    <Box 
+      sx={{ 
+        height: '100%', 
+        display: 'flex', 
+        flexDirection: 'column',
+        width: collapsed ? '50px' : '100%',
+        minWidth: collapsed ? '50px' : '200px',
+        backgroundColor: contrast === 'high-contrast' ? '#1e1e1e' : 'inherit',
+        color: contrast === 'high-contrast' ? '#fff' : 'inherit',
+        overflow: 'hidden',
+        transition: 'width 0.3s ease'
+      }}
+      {...props}
+    >
+      {/* Header con botón de colapso */}
+      <Box sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        p: 1,
+        borderBottom: 1,
+        borderColor: 'divider',
+        flexShrink: 0
+      }}>
+        {!collapsed && (
+          <Tabs 
+            value={tabIndex} 
+            onChange={handleTabChange} 
+            aria-label="File Manager Tabs"
+            textColor={contrast === 'high-contrast' ? 'inherit' : 'primary'}
+            indicatorColor={'primary'}
+            sx={{ flex: 1 }}
           >
-            <MenuItem onClick={handleRename} aria-label="Renombrar">Renombrar</MenuItem>
-            <MenuItem onClick={handleDelete} aria-label="Eliminar">Eliminar</MenuItem>
-          </Menu>
-          <Dialog open={dialogOpen} onClose={handleDialogClose}>
-            <DialogTitle>{isFile ? 'Crear archivo' : 'Crear carpeta'}</DialogTitle>
-            <DialogContent>
-              <DialogContentText>
-                {isFile ? 'Ingrese el nombre del archivo:' : 'Ingrese el nombre de la carpeta:'}
-              </DialogContentText>
-              <TextField
-                autoFocus
-                margin="dense"
-                label={isFile ? 'Nombre del archivo' : 'Nombre de la carpeta'}
-                type="text"
-                fullWidth
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-              />
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={handleDialogClose} color="primary">
-                Cancelar
-              </Button>
-              <Button onClick={handleDialogSubmit} color="primary">
-                Crear
-              </Button>
-            </DialogActions>
-          </Dialog>
-        </Box>
+            <Tab label="Archivos" />
+            <Tab label="Chat" />
+          </Tabs>
         )}
-        {/* <Box >
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Typography variant="h6">Estructura del Código</Typography>
-            <IconButton onClick={() => setIsCodeStructureOpen(!isCodeStructureOpen)} aria-label="Toggle code structure">
-              {isCodeStructureOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            </IconButton>
-          </Box>
-          <Collapse in={isCodeStructureOpen}>
-            <ul>
-              {codeStructure.map((item, index) => (
-                <li key={index}>
-                  {item.type} {item.name ? `- ${item.name}` : ''} en línea {item.line} y cierra en línea {item.end_line}
-                </li>
-              ))}
-            </ul>
-          </Collapse>
-        </Box> */}
-        <Box sx={{ position: 'relative', flexGrow: 1, padding: 2 }}>
-        
-          {/* <Typography variant="h6">Estructura del Código</Typography> */}
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Typography>Estructura del Código</Typography>
-            <IconButton onClick={() => setIsCodeStructureOpen(!isCodeStructureOpen)} aria-label="Estructura del codigo">
-              {isCodeStructureOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            </IconButton>
-          </Box>
-          <Collapse in={isCodeStructureOpen}>
-            <Box
+        <IconButton 
+          onClick={onToggleCollapse}
+          size="small"
+          aria-label={collapsed ? "Expandir panel" : "Colapsar panel"}
+          sx={{ 
+            ml: collapsed ? 0 : 1,
+            color: contrast === 'high-contrast' ? '#fff' : 'inherit'
+          }}
+        >
+          {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+        </IconButton>
+      </Box>
+
+      {/* Contenido */}
+      {!collapsed && (
+        <Box sx={{ 
+          flex: 1, 
+          display: 'flex', 
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: 'hidden'
+        }}>
+          {/* Contenido de Chat */}
+          {tabIndex === 1 && (
+            <Box sx={{ 
+              flex: 1, 
+              display: 'flex', 
+              flexDirection: 'column',
+              minHeight: 0
+            }}>
+              <Box sx={{ 
+                flexGrow: 1, 
+                overflowY: 'auto', 
+                mb: 2, 
+                padding: 2,
+                minHeight: 0
+              }}>
+                <Typography variant="h6" component="h2" aria-live="polite">
+                  Bienvenido a tu copiloto, estoy aquí para ayudarte a hacer las cosas más rápido.
+                </Typography>
+                {loading ? (
+                  <CircularProgress color={contrast === 'high-contrast' ? 'inherit' : 'primary'}/>
+                ) : (
+                  <ChatHistory chatHistory={chatHistory} contrast={contrast} /> 
+                )}
+              </Box>
+              
+              <Box sx={{ 
+                padding: 2, 
+                borderTop: 1, 
+                borderColor: 'divider',
+                flexShrink: 0
+              }}>
+                <TextField
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Escribe o pregunta algo a tu copiloto..."
+                  fullWidth
+                  multiline
+                  rows={2}
+                  variant="outlined"
+                  aria-label="Descripción del código"
+                  InputProps={{
+                    style: { color: contrast === 'high-contrast' ? '#fff' : '#000' },
+                    endAdornment: (
+                      <>
+                        <IconButton onClick={handleMicClick} color={isListening ? "error" : contrast === 'high-contrast' ? "inherit" : "primary"}>
+                          <MicIcon />
+                        </IconButton>
+                        <IconButton onClick={handleGenerateCode} color={contrast === 'high-contrast' ? "inherit" : "primary"}>
+                          <SendIcon />
+                        </IconButton>
+                      </>
+                    ),
+                  }}
+                />
+              </Box>
+            </Box>
+          )}
+
+          {/* Contenido de Archivos con Split Vertical */}
+          {tabIndex === 0 && (
+            <Box sx={{ 
+              flex: 1, 
+              display: 'flex', 
+              flexDirection: 'column',
+              minHeight: 0,
+              overflow: 'hidden'
+            }}>
+              {hasCodeStructure ? (
+                <Split
+                  direction="vertical"
+                  sizes={isCodeStructureOpen ? [60, 40] : [90, 10]}
+                  minSize={[150, 50]}
+                  maxSize={[undefined, undefined]}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                    minHeight: 0
+                  }}
+                  className="split-vertical-filemanager"
+                >
+                  {/* Panel superior: Archivos y opciones */}
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    minHeight: 0,
+                    overflow: 'hidden',
+                    p: 1
+                  }}>
+                    {/* Botones de acción en filas */}
+                    <Box sx={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      gap: 1, 
+                      mb: 2
+                    }}>
+                      {/* Primera fila */}
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Tooltip title="Crear nuevo archivo">
+                          <Button
+                            onClick={handleCreateFile}
+                            size="small"
+                            startIcon={<NoteAddIcon />}
+                            variant="outlined"
+                            fullWidth
+                            sx={{ 
+                              color: contrast === 'high-contrast' ? '#fff' : 'inherit',
+                              borderColor: contrast === 'high-contrast' ? '#fff' : 'inherit'
+                            }}
+                          >
+                            Nuevo Archivo
+                          </Button>
+                        </Tooltip>
+                        <Tooltip title="Crear nueva carpeta">
+                          <Button
+                            onClick={handleCreateFolder}
+                            size="small"
+                            startIcon={<CreateNewFolder />}
+                            variant="outlined"
+                            fullWidth
+                            sx={{ 
+                              color: contrast === 'high-contrast' ? '#fff' : 'inherit',
+                              borderColor: contrast === 'high-contrast' ? '#fff' : 'inherit'
+                            }}
+                          >
+                            Nueva Carpeta
+                          </Button>
+                        </Tooltip>
+                      </Box>
+
+                      {/* Segunda fila */}
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Tooltip title="Abrir archivo desde el sistema">
+                          <Button
+                            onClick={handleOpenFile}
+                            size="small"
+                            startIcon={<FolderOpenIcon />}
+                            variant="outlined"
+                            fullWidth
+                            sx={{ 
+                              color: contrast === 'high-contrast' ? '#fff' : 'inherit',
+                              borderColor: contrast === 'high-contrast' ? '#fff' : 'inherit'
+                            }}
+                          >
+                            Abrir Archivo
+                          </Button>
+                        </Tooltip>
+                        <Tooltip title="Abrir carpeta desde el sistema">
+                          <Button
+                            onClick={handleOpenFolder}
+                            size="small"
+                            startIcon={<FolderOpen />}
+                            variant="outlined"
+                            fullWidth
+                            sx={{ 
+                              color: contrast === 'high-contrast' ? '#fff' : 'inherit',
+                              borderColor: contrast === 'high-contrast' ? '#fff' : 'inherit'
+                            }}
+                          >
+                            Abrir Carpeta
+                          </Button>
+                        </Tooltip>
+                      </Box>
+                    </Box>
+
+                    {/* Lista de archivos y carpetas */}
+                    <Box sx={{ 
+                      flex: 1,
+                      overflowY: 'auto',
+                      minHeight: 0
+                    }}>
+                      {/* Mensaje cuando no hay archivos */}
+                      {files.length === 0 && folders.length === 0 && (
+                        <Typography 
+                          variant="body2" 
+                          sx={{ 
+                            textAlign: 'center', 
+                            py: 2,
+                            color: contrast === 'high-contrast' ? '#ccc' : '#666',
+                            fontStyle: 'italic'
+                          }}
+                        >
+                          No hay archivos abiertos. Usa los botones de arriba para crear o abrir archivos.
+                        </Typography>
+                      )}
+
+                      {/* Carpetas */}
+                      {folders.map((folder) => (
+                        <Box key={folder.id} sx={{ mb: 1 }}>
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              cursor: 'pointer',
+                              p: 0.5,
+                              borderRadius: 1,
+                              '&:hover': {
+                                backgroundColor: contrast === 'high-contrast' ? '#333' : '#f0f0f0'
+                              }
+                            }}
+                            onClick={() => toggleFolder(folder.id)}
+                          >
+                            {openFolders[folder.id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                            <Folder sx={{ mr: 1 }} />
+                            <Typography variant="body2">{folder.name}</Typography>
+                          </Box>
+                          <Collapse in={openFolders[folder.id]}>
+                            <Box sx={{ ml: 2 }}>
+                              {folder.files.map((file) => (
+                                <Box
+                                  key={file.id}
+                                  sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    cursor: 'pointer',
+                                    p: 0.5,
+                                    borderRadius: 1,
+                                    '&:hover': {
+                                      backgroundColor: contrast === 'high-contrast' ? '#333' : '#f0f0f0'
+                                    }
+                                  }}
+                                  onClick={() => handleFileClick(file)}
+                                >
+                                  <InsertDriveFile sx={{ mr: 1, fontSize: 16 }} />
+                                  <Typography variant="caption">{file.name}</Typography>
+                                </Box>
+                              ))}
+                            </Box>
+                          </Collapse>
+                        </Box>
+                      ))}
+
+                      {/* Archivos individuales */}
+                      {files.map((file) => (
+                        <Box
+                          key={file.id}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            cursor: 'pointer',
+                            p: 0.5,
+                            mb: 0.5,
+                            borderRadius: 1,
+                            '&:hover': {
+                              backgroundColor: contrast === 'high-contrast' ? '#333' : '#f0f0f0'
+                            }
+                          }}
+                          onClick={() => handleFileClick(file)}
+                        >
+                          <InsertDriveFile sx={{ mr: 1 }} />
+                          <Typography variant="body2">{file.name}</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+
+                  {/* Panel inferior: Estructura del código */}
+                  {/* Panel inferior: Estructura del código */}
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: 'column',
+      minHeight: 0,
+      overflow: 'hidden',
+      borderTop: 1,
+      borderColor: 'divider',
+      height: '100%'
+    }}>
+      <Box sx={{ 
+        display: 'flex', 
+        alignItems: 'center',
+        p: 1,
+        borderBottom: isCodeStructureOpen ? 1 : 0,
+        borderColor: 'divider',
+        cursor: 'pointer',
+        backgroundColor: contrast === 'high-contrast' ? '#2d2d2d' : '#f5f5f5',
+        flexShrink: 0
+      }}
+      onClick={() => setIsCodeStructureOpen(!isCodeStructureOpen)}
+      >
+        <Typography variant="body2" sx={{ flex: 1, fontWeight: 'medium' }}>
+          Estructura del Código ({codeStructure.length} elementos)
+        </Typography>
+        <IconButton 
+          size="small"
+          aria-label="Alternar estructura del código"
+          sx={{ color: contrast === 'high-contrast' ? '#fff' : 'inherit' }}
+        >
+          {isCodeStructureOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+        </IconButton>
+      </Box>
+      
+      {/* Always show the scrollable content, remove Collapse */}
+      <Box sx={{
+        flex: 1,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        minHeight: 0,
+        display: isCodeStructureOpen ? 'block' : 'none'
+      }}>
+        <List dense sx={{ p: 0 }}>
+          {codeStructure.map((item, index) => (
+            <ListItem
+              key={index}
               sx={{
-                overflowY: 'auto', // Habilita el scroll vertical
-                maxHeight: '20%',
-                padding: '8px', // Opcional: agrega un poco de padding
+                borderBottom: '1px solid',
+                borderColor: contrast === 'high-contrast' ? '#444' : '#ddd',
+                py: 1,
+                px: 1.5,
+                '&:hover': {
+                  backgroundColor: contrast === 'high-contrast' ? '#333' : '#f0f0f0'
+                }
               }}
             >
-              <List>
-                {codeStructure.map((item, index) => (
-                  <ListItem
-                    key={index}
+              <ListItemText
+                primary={
+                  <Typography
+                    variant="body2"
                     sx={{
-                      borderBottom: '1px solid',
-                      borderColor: contrast === 'high-contrast' ? '#444' : '#ddd',
-                      padding: '8px 0',
+                      display: 'block',
+                      wordBreak: 'break-word',
+                      fontWeight: 'medium'
+                    }}
+                    aria-label={`${item.type} ${item.name ? `- ${item.name}` : ''} en línea ${item.line} y cierra en línea ${item.end_line}`}
+                  >
+                    <span style={{ 
+                      color: contrast === 'high-contrast' ? '#4fc3f7' : '#1976d2',
+                      fontWeight: 'bold'
+                    }}>
+                      {item.type}
+                    </span>
+                    {item.name && (
+                      <span style={{ marginLeft: '8px' }}>
+                        {item.name}
+                      </span>
+                    )}
+                  </Typography>
+                }
+                secondary={
+                  <Typography
+                    variant="caption"
+                    sx={{ 
+                      color: contrast === 'high-contrast' ? '#aaa' : '#666',
+                      fontSize: '0.75rem'
                     }}
                   >
-                    <Typography
-                      aria-label={`${item.type} ${item.name ? `- ${item.name}` : ''} en línea ${item.line} y cierra en línea ${item.end_line}`}
-                      sx={{ fontSize: '14px' }}
-                    >
-                      {item.type} {item.name ? `- ${item.name}` : ''} en línea {item.line} y cierra en línea {item.end_line}
-                    </Typography>
-                  </ListItem>
-                ))}
-              </List>
-            </Box>
-          </Collapse>
-      
-        </Box>
+                    Líneas {item.line}-{item.end_line}
+                  </Typography>
+                }
+              />
+            </ListItem>
+          ))}
+        </List>
       </Box>
-        
+    </Box>
+                </Split>
+              ) : (
+                // Vista sin estructura de código
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  minHeight: 0,
+                  overflow: 'hidden',
+                  p: 1,
+                  flex: 1
+                }}>
+                  {/* Botones de acción en filas */}
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    gap: 1, 
+                    mb: 2
+                  }}>
+                    {/* Primera fila */}
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Tooltip title="Crear nuevo archivo">
+                        <Button
+                          onClick={handleCreateFile}
+                          size="small"
+                          startIcon={<NoteAddIcon />}
+                          variant="outlined"
+                          fullWidth
+                          sx={{ 
+                            color: contrast === 'high-contrast' ? '#fff' : 'inherit',
+                            borderColor: contrast === 'high-contrast' ? '#fff' : 'inherit'
+                          }}
+                        >
+                          Nuevo Archivo
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="Crear nueva carpeta">
+                        <Button
+                          onClick={handleCreateFolder}
+                          size="small"
+                          startIcon={<CreateNewFolder />}
+                          variant="outlined"
+                          fullWidth
+                          sx={{ 
+                            color: contrast === 'high-contrast' ? '#fff' : 'inherit',
+                            borderColor: contrast === 'high-contrast' ? '#fff' : 'inherit'
+                          }}
+                        >
+                          Nueva Carpeta
+                        </Button>
+                      </Tooltip>
+                    </Box>
+
+                    {/* Segunda fila */}
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Tooltip title="Abrir archivo desde el sistema">
+                        <Button
+                          onClick={handleOpenFile}
+                          size="small"
+                          startIcon={<FolderOpenIcon />}
+                          variant="outlined"
+                          fullWidth
+                          sx={{ 
+                            color: contrast === 'high-contrast' ? '#fff' : 'inherit',
+                            borderColor: contrast === 'high-contrast' ? '#fff' : 'inherit'
+                          }}
+                        >
+                          Abrir Archivo
+                        </Button>
+                      </Tooltip>
+                      <Tooltip title="Abrir carpeta desde el sistema">
+                        <Button
+                          onClick={handleOpenFolder}
+                          size="small"
+                          startIcon={<FolderOpen />}
+                          variant="outlined"
+                          fullWidth
+                          sx={{ 
+                            color: contrast === 'high-contrast' ? '#fff' : 'inherit',
+                            borderColor: contrast === 'high-contrast' ? '#fff' : 'inherit'
+                          }}
+                        >
+                          Abrir Carpeta
+                        </Button>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+
+                  {/* Lista de archivos y carpetas */}
+                  <Box sx={{ 
+                    flex: 1,
+                    overflowY: 'auto',
+                    minHeight: 0
+                  }}>
+                    {/* Mensaje cuando no hay archivos */}
+                    {files.length === 0 && folders.length === 0 && (
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          textAlign: 'center', 
+                          py: 2,
+                          color: contrast === 'high-contrast' ? '#ccc' : '#666',
+                          fontStyle: 'italic'
+                        }}
+                      >
+                        No hay archivos abiertos. Usa los botones de arriba para crear o abrir archivos.
+                      </Typography>
+                    )}
+
+                    {/* Carpetas */}
+                    {folders.map((folder) => (
+                      <Box key={folder.id} sx={{ mb: 1 }}>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            cursor: 'pointer',
+                            p: 0.5,
+                            borderRadius: 1,
+                            '&:hover': {
+                              backgroundColor: contrast === 'high-contrast' ? '#333' : '#f0f0f0'
+                            }
+                          }}
+                          onClick={() => toggleFolder(folder.id)}
+                        >
+                          {openFolders[folder.id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                          <Folder sx={{ mr: 1 }} />
+                          <Typography variant="body2">{folder.name}</Typography>
+                        </Box>
+                        <Collapse in={openFolders[folder.id]}>
+                          <Box sx={{ ml: 2 }}>
+                            {folder.files.map((file) => (
+                              <Box
+                                key={file.id}
+                                sx={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  cursor: 'pointer',
+                                  p: 0.5,
+                                  borderRadius: 1,
+                                  '&:hover': {
+                                    backgroundColor: contrast === 'high-contrast' ? '#333' : '#f0f0f0'
+                                  }
+                                }}
+                                onClick={() => handleFileClick(file)}
+                              >
+                                <InsertDriveFile sx={{ mr: 1, fontSize: 16 }} />
+                                <Typography variant="caption">{file.name}</Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                        </Collapse>
+                      </Box>
+                    ))}
+
+                    {/* Archivos individuales */}
+                    {files.map((file) => (
+                      <Box
+                        key={file.id}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          cursor: 'pointer',
+                          p: 0.5,
+                          mb: 0.5,
+                          borderRadius: 1,
+                          '&:hover': {
+                            backgroundColor: contrast === 'high-contrast' ? '#333' : '#f0f0f0'
+                          }
+                        }}
+                        onClick={() => handleFileClick(file)}
+                      >
+                        <InsertDriveFile sx={{ mr: 1 }} />
+                        <Typography variant="body2">{file.name}</Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )}
+        </Box>
+      )}
+
+      {/* Vista colapsada */}
+      {collapsed && (
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center',
+          gap: 2,
+          p: 1
+        }}>
+          <Tooltip title="Archivos">
+            <IconButton 
+              aria-label="Archivos" 
+              color={contrast === 'high-contrast' ? 'inherit' : 'primary'}
+              onClick={() => {
+                onToggleCollapse();
+                setTabIndex(0);
+              }}
+            >
+              <Folder />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Chat">
+            <IconButton 
+              aria-label="Chat" 
+              color={contrast === 'high-contrast' ? 'inherit' : 'primary'}
+              onClick={() => {
+                onToggleCollapse();
+                setTabIndex(1);
+              }}
+            >
+              <SendIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )}
+
+      {/* Dialog para crear archivos/carpetas */}
+      <Dialog 
+        open={dialogOpen} 
+        onClose={() => setDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            backgroundColor: contrast === 'high-contrast' ? '#1e1e1e' : 'background.paper',
+            color: contrast === 'high-contrast' ? '#fff' : 'text.primary'
+          }
+        }}
+      >
+        <DialogTitle>
+          {isFile ? 'Crear Nuevo Archivo' : 'Crear Nueva Carpeta'}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ color: contrast === 'high-contrast' ? '#ccc' : 'inherit' }}>
+            Ingresa el nombre para {isFile ? 'el archivo' : 'la carpeta'}:
+            {isFile && (
+              <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                Tip: Si no especificas extensión, se agregará .txt automáticamente
+              </Typography>
+            )}
+          </DialogContentText>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Nombre"
+            fullWidth
+            variant="outlined"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                handleDialogConfirm();
+              }
+            }}
+            InputProps={{
+              style: { color: contrast === 'high-contrast' ? '#fff' : '#000' }
+            }}
+            InputLabelProps={{
+              style: { color: contrast === 'high-contrast' ? '#ccc' : 'inherit' }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDialogOpen(false)}>Cancelar</Button>
+          <Button onClick={handleDialogConfirm} variant="contained">
+            Crear
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
