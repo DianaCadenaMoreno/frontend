@@ -71,20 +71,30 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
     if (!prompt.trim()) return;
     
     setLoading(true);
-    const newChatHistory = [...chatHistory, { role: 'user', content: prompt }];
-    setChatHistory(newChatHistory);
+    
+    // Add user message to chat history
+    const userMessage = { role: 'user', content: prompt.trim() };
+    const updatedHistory = [...chatHistory, userMessage];
+    setChatHistory(updatedHistory);
     
     try {
-      await generateCode(prompt, (response) => {
-        setChatHistory(prev => [...prev, { role: 'assistant', content: response }]);
-      }, setLoading);
+      const response = await generateCode(prompt, setLoading, chatHistory);
+      
+      // Ensure response is a string
+      const responseContent = typeof response === 'string' ? response : String(response || '');
+      
+      // Add assistant response to chat history
+      const assistantMessage = { role: 'assistant', content: responseContent };
+      setChatHistory([...updatedHistory, assistantMessage]);
+      
     } catch (error) {
       console.error('Error generating code:', error);
-      setChatHistory(prev => [...prev, { role: 'assistant', content: 'Lo siento, hubo un error al generar el código.' }]);
+      const errorMessage = { role: 'assistant', content: 'Error al generar respuesta. Inténtalo de nuevo.' };
+      setChatHistory([...updatedHistory, errorMessage]);
+    } finally {
+      setPrompt('');
+      setLoading(false);
     }
-    
-    setPrompt('');
-    setLoading(false);
   };
 
   const handleCreateFile = () => {
@@ -193,42 +203,47 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
 
   const ChatHistory = ({ chatHistory, contrast }) => (
     <div>
-      {updatedChatHistory.map((message, index) => (
-        <div key={index} style={{ marginBottom: "10px" }}>
-          <Typography style={{ color: contrast === "high-contrast" ? "#fff" : "#000" }}>
-            <strong>{message.role === "user" ? "Tú: " : "Copiloto: "}</strong>
-          </Typography>
-          <ReactMarkdown
-            children={message.content}
-            remarkPlugins={[remarkGfm]}
-            components={{
-              p: ({ node, ...props }) => (
-                <Typography
-                  {...props}
-                  style={{ color: contrast === "high-contrast" ? "#fff" : "#000", marginBottom: "10px" }}
-                />
-              ),
-              code: ({ node, inline, className, children, ...props }) => (
-                <div style={{ position: "relative" }}>
-                  <pre style={{ whiteSpace: "pre-wrap", wordWrap: "break-word" }}>
-                    <code {...props}>{children}</code>
-                  </pre>
-                  <CopyToClipboard text={children}>
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      size="small"
-                      style={{ position: "absolute", top: 0, right: 0 }}
-                    >
-                      Copiar
-                    </Button>
-                  </CopyToClipboard>
-                </div>
-              ),
-            }}
-          />
-        </div>
-      ))}
+      {chatHistory.map((message, index) => {
+        // Ensure content is a string and handle undefined/null cases
+        const content = typeof message.content === 'string' ? message.content : String(message.content || '');
+        
+        return (
+          <div key={index} style={{ marginBottom: "10px" }}>
+            <Typography style={{ color: contrast === "high-contrast" ? "#fff" : "#000" }}>
+              <strong>{message.role === "user" ? "Tú: " : "Copiloto: "}</strong>
+            </Typography>
+            <ReactMarkdown
+              children={content}
+              remarkPlugins={[remarkGfm]}
+              components={{
+                p: ({ node, ...props }) => (
+                  <Typography
+                    {...props}
+                    style={{ color: contrast === "high-contrast" ? "#fff" : "#000", marginBottom: "10px" }}
+                  />
+                ),
+                code: ({ node, inline, className, children, ...props }) => (
+                  <div style={{ position: "relative" }}>
+                    <pre style={{ whiteSpace: "pre-wrap", wordWrap: "break-word" }}>
+                      <code {...props}>{children}</code>
+                    </pre>
+                    <CopyToClipboard text={children}>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        size="small"
+                        style={{ position: "absolute", top: 0, right: 0 }}
+                      >
+                        Copiar
+                      </Button>
+                    </CopyToClipboard>
+                  </div>
+                ),
+              }}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 
@@ -358,7 +373,11 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                         <IconButton onClick={handleMicClick} color={isListening ? "error" : contrast === 'high-contrast' ? "inherit" : "primary"}>
                           <MicIcon />
                         </IconButton>
-                        <IconButton onClick={handleGenerateCode} color={contrast === 'high-contrast' ? "inherit" : "primary"}>
+                        <IconButton 
+                          onClick={handleGenerateCode} 
+                          color={contrast === 'high-contrast' ? "inherit" : "primary"}
+                          disabled={!prompt.trim() || loading}
+                        >
                           <SendIcon />
                         </IconButton>
                       </>
@@ -568,103 +587,102 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                   </Box>
 
                   {/* Panel inferior: Estructura del código */}
-                  {/* Panel inferior: Estructura del código */}
-    <Box sx={{ 
-      display: 'flex', 
-      flexDirection: 'column',
-      minHeight: 0,
-      overflow: 'hidden',
-      borderTop: 1,
-      borderColor: 'divider',
-      height: '100%'
-    }}>
-      <Box sx={{ 
-        display: 'flex', 
-        alignItems: 'center',
-        p: 1,
-        borderBottom: isCodeStructureOpen ? 1 : 0,
-        borderColor: 'divider',
-        cursor: 'pointer',
-        backgroundColor: contrast === 'high-contrast' ? '#2d2d2d' : '#f5f5f5',
-        flexShrink: 0
-      }}
-      onClick={() => setIsCodeStructureOpen(!isCodeStructureOpen)}
-      >
-        <Typography variant="body2" sx={{ flex: 1, fontWeight: 'medium' }}>
-          Estructura del Código ({codeStructure.length} elementos)
-        </Typography>
-        <IconButton 
-          size="small"
-          aria-label="Alternar estructura del código"
-          sx={{ color: contrast === 'high-contrast' ? '#fff' : 'inherit' }}
-        >
-          {isCodeStructureOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-        </IconButton>
-      </Box>
-      
-      {/* Always show the scrollable content, remove Collapse */}
-      <Box sx={{
-        flex: 1,
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        minHeight: 0,
-        display: isCodeStructureOpen ? 'block' : 'none'
-      }}>
-        <List dense sx={{ p: 0 }}>
-          {codeStructure.map((item, index) => (
-            <ListItem
-              key={index}
-              sx={{
-                borderBottom: '1px solid',
-                borderColor: contrast === 'high-contrast' ? '#444' : '#ddd',
-                py: 1,
-                px: 1.5,
-                '&:hover': {
-                  backgroundColor: contrast === 'high-contrast' ? '#333' : '#f0f0f0'
-                }
-              }}
-            >
-              <ListItemText
-                primary={
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      display: 'block',
-                      wordBreak: 'break-word',
-                      fontWeight: 'medium'
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    minHeight: 0,
+                    overflow: 'hidden',
+                    borderTop: 1,
+                    borderColor: 'divider',
+                    height: '100%'
+                  }}>
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center',
+                      p: 1,
+                      borderBottom: isCodeStructureOpen ? 1 : 0,
+                      borderColor: 'divider',
+                      cursor: 'pointer',
+                      backgroundColor: contrast === 'high-contrast' ? '#2d2d2d' : '#f5f5f5',
+                      flexShrink: 0
                     }}
-                    aria-label={`${item.type} ${item.name ? `- ${item.name}` : ''} en línea ${item.line} y cierra en línea ${item.end_line}`}
-                  >
-                    <span style={{ 
-                      color: contrast === 'high-contrast' ? '#4fc3f7' : '#1976d2',
-                      fontWeight: 'bold'
+                    onClick={() => setIsCodeStructureOpen(!isCodeStructureOpen)}
+                    >
+                      <Typography variant="body2" sx={{ flex: 1, fontWeight: 'medium' }}>
+                        Estructura del Código ({codeStructure.length} elementos)
+                      </Typography>
+                      <IconButton 
+                        size="small"
+                        aria-label="Alternar estructura del código"
+                        sx={{ color: contrast === 'high-contrast' ? '#fff' : 'inherit' }}
+                      >
+                        {isCodeStructureOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                      </IconButton>
+                    </Box>
+                    
+                    {/* Always show the scrollable content, remove Collapse */}
+                    <Box sx={{
+                      flex: 1,
+                      overflowY: 'auto',
+                      overflowX: 'hidden',
+                      minHeight: 0,
+                      display: isCodeStructureOpen ? 'block' : 'none'
                     }}>
-                      {item.type}
-                    </span>
-                    {item.name && (
-                      <span style={{ marginLeft: '8px' }}>
-                        {item.name}
-                      </span>
-                    )}
-                  </Typography>
-                }
-                secondary={
-                  <Typography
-                    variant="caption"
-                    sx={{ 
-                      color: contrast === 'high-contrast' ? '#aaa' : '#666',
-                      fontSize: '0.75rem'
-                    }}
-                  >
-                    Líneas {item.line}-{item.end_line}
-                  </Typography>
-                }
-              />
-            </ListItem>
-          ))}
-        </List>
-      </Box>
-    </Box>
+                      <List dense sx={{ p: 0 }}>
+                        {codeStructure.map((item, index) => (
+                          <ListItem
+                            key={index}
+                            sx={{
+                              borderBottom: '1px solid',
+                              borderColor: contrast === 'high-contrast' ? '#444' : '#ddd',
+                              py: 1,
+                              px: 1.5,
+                              '&:hover': {
+                                backgroundColor: contrast === 'high-contrast' ? '#333' : '#f0f0f0'
+                              }
+                            }}
+                          >
+                            <ListItemText
+                              primary={
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    display: 'block',
+                                    wordBreak: 'break-word',
+                                    fontWeight: 'medium'
+                                  }}
+                                  aria-label={`${item.type} ${item.name ? `- ${item.name}` : ''} en línea ${item.line} y cierra en línea ${item.end_line}`}
+                                >
+                                  <span style={{ 
+                                    color: contrast === 'high-contrast' ? '#4fc3f7' : '#1976d2',
+                                    fontWeight: 'bold'
+                                  }}>
+                                    {item.type}
+                                  </span>
+                                  {item.name && (
+                                    <span style={{ marginLeft: '8px' }}>
+                                      {item.name}
+                                    </span>
+                                  )}
+                                </Typography>
+                              }
+                              secondary={
+                                <Typography
+                                  variant="caption"
+                                  sx={{ 
+                                    color: contrast === 'high-contrast' ? '#aaa' : '#666',
+                                    fontSize: '0.75rem'
+                                  }}
+                                >
+                                  Líneas {item.line}-{item.end_line}
+                                </Typography>
+                              }
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </Box>
+                  </Box>
                 </Split>
               ) : (
                 // Vista sin estructura de código

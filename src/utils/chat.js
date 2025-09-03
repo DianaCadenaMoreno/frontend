@@ -48,43 +48,32 @@ const model = genAI.getGenerativeModel({
 // };
 
 //const generateCode = async (prompt, setGeneratedCode, setLoading) => {
-const generateCode = async (prompt, setLoading, chatHistory) => {
-  setLoading(true);
-  try {
-    const fullPrompt = `You are a helpful assistant that generates code snippets, with documentation context for accessibility, translate your entire amswer into the following language. ${prompt}`;
-    const messages = [
-      { role: "user", content: prompt }, // Asegúrate de que este sea el primer mensaje
-      { role: "model", content: fullPrompt }, // Este se puede agregar después
-      ...chatHistory.map(message => ({ // Agrega el historial existente
-        role: message.role,
-        content: message.content,
-      }))
-    ];
-
-    // Inicia el chat con el historial de mensajes
-    const chat = await model.startChat({
-      history: messages.map((message) => ({
-        role: message.role,
+  const generateCode = async (prompt, setLoading, chatHistory) => {
+    setLoading(true);
+    try {
+      // Convert chat history to Google AI format
+      const convertedHistory = chatHistory.map(message => ({
+        role: message.role === 'assistant' ? 'model' : message.role,
         parts: [{ text: message.content }]
-      }))
-    });
-    //const response = await model.generateContent(fullPrompt);
-    //console.log(response.response.text());
-    //setGeneratedCode(response.response.text());
-    //setGeneratedCode(response.data?.embeddings[0]?.content || "No se generó código.");
-
-    // Envía el mensaje actual y espera la respuesta
-    const response = await chat.sendMessage(prompt);
-    const generatedText = response.response.text();
-    console.log("Generated response:", generatedText);
-    return generatedText;
-  } catch (error) {
-    console.error("Error al generar código:", error);
-    return "No se generó respuesta, intenté de nuevo más tarde.";
-  } finally {
-    setLoading(false);
-  }
-};
+      }));
+  
+      // Start chat with converted history
+      const chat = await model.startChat({
+        history: convertedHistory
+      });
+  
+      // Send the current message
+      const response = await chat.sendMessage(prompt);
+      const generatedText = response.response.text();
+      console.log("Generated response:", generatedText);
+      return generatedText;
+    } catch (error) {
+      console.error("Error al generar código:", error);
+      return "No se generó respuesta, intenté de nuevo más tarde.";
+    } finally {
+      setLoading(false);
+    }
+  };
 
 export default generateCode;
 
