@@ -11,14 +11,14 @@
 
 .gutter.gutter-horizontal {
   cursor: col-resize;
-  width: 8px !important;
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="8" height="100%" viewBox="0 0 8 100"><rect x="2" y="0" width="1" height="100%" fill="%23666"/><rect x="5" y="0" width="1" height="100%" fill="%23666"/></svg>');
+  width: 14px !important;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="100%" viewBox="0 0 14 100"><rect x="6" y="0" width="2" height="100%" fill="%23666"/><rect x="11" y="0" width="2" height="100%" fill="%23666"/></svg>');
 }
 
 .gutter.gutter-vertical {
   cursor: row-resize;
-  height: 8px !important;
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="8" viewBox="0 0 100 8"><rect x="0" y="2" width="100%" height="1" fill="%23666"/><rect x="0" y="5" width="100%" height="1" fill="%23666"/></svg>');
+  height: 14px !important;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="12" viewBox="0 0 100 10"><rect x="0" y="2" width="100%" height="1" fill="%23666"/><rect x="0" y="5" width="100%" height="1" fill="%23666"/></svg>');
 }
 
 .split-horizontal {

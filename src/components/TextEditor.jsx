@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, Typography, Breadcrumbs, Link, Button, CircularProgress } from '@mui/material';
+import { Box, Typography, Breadcrumbs, Link, Button, CircularProgress, Stack } from '@mui/material';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import Editor, { loader } from '@monaco-editor/react'; // Importa loader
 import axiosInstance from '../utils/axiosInstance';
@@ -9,7 +9,112 @@ function handleClick(event) {
   console.info('You clicked a breadcrumb.');
 }
 
-const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, editorContent, setEditorContent, setPid }, ref) => {
+// Definir tema personalizado de alto contraste
+const defineCustomThemes = async () => {
+  const monaco = await loader.init();
+  
+  // Tema de Alto Contraste personalizado
+  monaco.editor.defineTheme('high-contrast-custom', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: 'FFEB3B', fontStyle: 'italic' },
+      { token: 'keyword', foreground: '0eee46ff' },
+      { token: 'string', foreground: 'df0cd5ff' },
+      { token: 'number', foreground: '04fdf1ff' },
+      { token: 'type', foreground: '2b09ecff' },
+      { token: 'class', foreground: '2b09ecff' },
+      { token: 'function', foreground: 'D32F2F' },
+      { token: 'variable', foreground: '2b09ecff' },
+      { token: 'constant', foreground: '2b09ecff' },
+      { token: 'operator', foreground: 'ffffff' },
+      { token: 'delimiter', foreground: 'ffffff' },
+    ],
+    colors: {
+      'editor.background': '#000000',
+      'editor.foreground': '#ffffff',
+      'editor.lineHighlightBackground': '#1a1a1a',
+      'editorLineNumber.foreground': '#858585',
+      'editorLineNumber.activeForeground': '#ffffff',
+      'editor.selectionBackground': '#264f78',
+      'editor.inactiveSelectionBackground': '#3a3d41',
+      'editorCursor.foreground': '#ffffff',
+      'editor.findMatchBackground': '#515c6a',
+      'editor.findMatchHighlightBackground': '#ea5c0055',
+      'editorIndentGuide.background': '#404040',
+      'editorIndentGuide.activeBackground': '#707070',
+      'editorWhitespace.foreground': '#505050',
+      'editorWidget.background': '#1e1e1e',
+      'editorWidget.border': '#454545',
+      'editorSuggestWidget.background': '#1e1e1e',
+      'editorSuggestWidget.selectedBackground': '#264f78',
+      'editorHoverWidget.background': '#1e1e1e',
+      'editorHoverWidget.border': '#454545',
+    }
+  });
+
+  // Tema de Contraste Azul
+  monaco.editor.defineTheme('blue-contrast-custom', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '6A9955' },
+      { token: 'keyword', foreground: '4FC3F7', fontStyle: 'bold' },
+      { token: 'string', foreground: 'FFE082' },
+      { token: 'number', foreground: 'B39DDB' },
+      { token: 'type', foreground: '4DD0E1' },
+      { token: 'class', foreground: '81C784' },
+      { token: 'function', foreground: '81C784' },
+      { token: 'variable', foreground: 'E0E0E0' },
+      { token: 'constant', foreground: 'B39DDB' },
+      { token: 'operator', foreground: '4FC3F7' },
+    ],
+    colors: {
+      'editor.background': '#0d1117',
+      'editor.foreground': '#E0E0E0',
+      'editor.lineHighlightBackground': '#1a2332',
+      'editorLineNumber.foreground': '#7289DA',
+      'editorLineNumber.activeForeground': '#4FC3F7',
+      'editor.selectionBackground': '#264f7880',
+      'editorCursor.foreground': '#4FC3F7',
+      'editor.findMatchBackground': '#42A5F5',
+      'editorIndentGuide.background': '#2C3E50',
+      'editorIndentGuide.activeBackground': '#4FC3F7',
+    }
+  });
+
+  // Tema de Contraste Amarillo
+  monaco.editor.defineTheme('yellow-contrast-custom', {
+    base: 'vs',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '6A9955' },
+      { token: 'keyword', foreground: 'D32F2F', fontStyle: 'bold' },
+      { token: 'string', foreground: 'F57C00' },
+      { token: 'number', foreground: '7B1FA2' },
+      { token: 'type', foreground: '1976D2' },
+      { token: 'class', foreground: '388E3C' },
+      { token: 'function', foreground: '388E3C' },
+      { token: 'variable', foreground: '212121' },
+      { token: 'constant', foreground: '7B1FA2' },
+      { token: 'operator', foreground: 'D32F2F' },
+    ],
+    colors: {
+      'editor.background': '#FFFDE7',
+      'editor.foreground': '#212121',
+      'editor.lineHighlightBackground': '#FFF9C4',
+      'editorLineNumber.foreground': '#757575',
+      'editorLineNumber.activeForeground': '#D32F2F',
+      'editor.selectionBackground': '#FFE082',
+      'editorCursor.foreground': '#D32F2F',
+      'editor.findMatchBackground': '#04fdf1ff',
+      'editorIndentGuide.background': '#E0E0E0',
+      'editorIndentGuide.activeBackground': '#FDD835',
+    }
+  });
+};
+
+const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStructure, editorContent, setEditorContent, setPid, currentFileName, unsavedChanges, onSave }, ref) => {
   const [isLoading, setIsLoading] = useState(false);
   const [hasStartedTyping, setHasStartedTyping] = useState(false);
   const editorRef = useRef(null);
@@ -17,12 +122,20 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
   const [breakpoints, setBreakpoints] = useState([]);
 
   useEffect(() => {
+    defineCustomThemes();
     setTimeout(() => {
       if (editorRef.current) {
         editorRef.current.layout();
       }
     }, 200); // Delay pequeño para evitar conflictos con renderización inicial
   }, []);
+
+  // Actualizar el tamaño de fuente cuando cambie
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({ fontSize: fontSize });
+    }
+  }, [fontSize]);
   
   // Función para activar el foco en el editor
   React.useImperativeHandle(ref, () => ({
@@ -42,31 +155,35 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
   const getEditorTheme = (contrast) => {
     switch(contrast) {
       case 'high-contrast':
-        return 'vs-dark';
+        return 'high-contrast-custom';
       case 'blue-contrast':
-        return 'hc-black'; // O crear un tema personalizado
+        return 'blue-contrast-custom';
       case 'yellow-contrast':
-        return 'vs'; // O crear un tema personalizado
+        return 'yellow-contrast-custom';
       default:
         return 'vs-light';
     }
   };
 
   const breadcrumbs = [
-    // <Link underline="hover" key="1" color={contrast === 'high-contrast' ? '#fff' : 'inherit'} href="/" onClick={handleClick}>
-    //   MUI
-    // </Link>,
-    // <Link
-    //   underline="hover"
-    //   key="2"
-    //   color={contrast === 'high-contrast' ? '#fff' : 'inherit'}
-    //   href="/material-ui/getting-started/installation/"
-    //   onClick={handleClick}
-    // >
-    //   Core
-    // </Link>,
-    <Typography key="3" color={contrast === 'high-contrast' ? '#fff' : 'text.primary'}>
-      file.py
+    <Typography 
+      key="3" 
+      color={contrast === 'high-contrast' ? '#fff' : 'text.primary'}
+      sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+    >
+      {currentFileName || 'Sin archivo'}
+      {unsavedChanges && (
+        <span 
+          style={{ 
+            fontSize: '0.8em', 
+            color: contrast === 'high-contrast' ? '#ffeb3b' : '#f57c00',
+            fontWeight: 'bold'
+          }}
+          aria-label="Archivo con cambios sin guardar"
+        >
+          ●
+        </span>
+      )}
     </Typography>,
   ];
 
@@ -116,14 +233,14 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
     const lineContent = model.getLineContent(position.lineNumber).substring(0, position.column - 1);
     
     let textToSpeak = lineContent || `Line ${position.lineNumber}`;
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(textToSpeak);
-      utterance.lang = 'es-ES'; 
-      utterance.onerror = (error) => console.error('Speech synthesis error:', error);
-      window.speechSynthesis.speak(utterance);
-    } else {
-      console.error('Speech synthesis not supported in this browser.');
-    }
+    // if ('speechSynthesis' in window) {
+    //   const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    //   utterance.lang = 'es-ES'; 
+    //   utterance.onerror = (error) => console.error('Speech synthesis error:', error);
+    //   window.speechSynthesis.speak(utterance);
+    // } else {
+    //   console.error('Speech synthesis not supported in this browser.');
+    // }
   };
 
   // const handleSendFile = async () => {
@@ -150,55 +267,114 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
   const handleSendFile = () => {
     if (!editorContent.trim()) {
       console.error('No hay código para ejecutar.');
+      setOutput([{ prompt: '', text: 'Error: No hay código para ejecutar', color: '#ff5555' }]);
       return;
     }
-  
-    // Crear una conexión WebSocket
-    //const ws = new WebSocket(`ws://localhost:80/ws/terminal/`); //local
-    const ws = new WebSocket(`wss://backend-g1zl.onrender.com/ws/terminal/`); // pro
-    setWsInstance(ws);
-    // ws.onopen = () => {
-    //   console.log('WebSocket conectado');
-    //   // Enviar el código al WebSocket
-    //   ws.send(JSON.stringify({ code: editorContent, inputs: [] })); 
-    // };
+
+    // Limpiar output anterior
+    setOutput([{ prompt: '', text: 'Conectando...', color: '#8be9fd' }]);
+
+    // Crear WebSocket
+    //const wsUrl = 'ws://localhost/ws/terminal/'; // local
+    const wsUrl = 'wss://backend-g1zl.onrender.com/ws/terminal/'; // producción
+    const ws = new WebSocket(wsUrl);
+    
     ws.onopen = () => {
       console.log('WebSocket conectado');
-      // Enviar el código al WebSocket
-      ws.send(JSON.stringify({ code: editorContent, inputs: [] }));
+      setOutput([{ prompt: '', text: 'Ejecutando código...', color: '#8be9fd' }]);
+      
+      // Enviar código al servidor
+      ws.send(JSON.stringify({
+        action: 'upload_files',
+        files: {
+          'main.py': editorContent
+        }
+      }));
     };
-  
+
     ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data); // analizar el mensaje como JSON
-        if (data.status === 'output') {
-          setOutput(prev => [...prev, {prompt: '', text: data.output}]);
-        } else if (data.status === 'input') {
-          setOutput(prev => [...prev, {prompt: data.prompt, text: ''}]);
-        } else if (data.status === 'error') {
-          console.error(`Error: ${data.error}`);
-        } else if (data.status === 'success') {
-          console.log('Ejecución completada:', data.output);
+        const data = JSON.parse(event.data);
+        
+        switch(data.type) {
+          case 'files_saved':
+            // Iniciar ejecución
+            ws.send(JSON.stringify({
+              action: 'run',
+              entrypoint: 'main.py',
+              timeout: 60
+            }));
+            break;
+            
+          case 'started':
+            setPid(data.pid);
+            setOutput(prev => [...prev, { prompt: '', text: `Proceso iniciado (PID: ${data.pid})`, color: '#50fa7b' }]);
+            break;
+            
+          case 'output':
+            setOutput(prev => [...prev, { 
+              prompt: '', 
+              text: data.data,
+              color: data.stream === 'stderr' ? '#ff5555' : '#ffffff'
+            }]);
+            break;
+            
+          case 'execution_finished':
+            setOutput(prev => [...prev, { 
+              prompt: '', 
+              text: `\nProceso finalizado (código: ${data.exit_code})`,
+              color: data.exit_code === 0 ? '#50fa7b' : '#ff5555'
+            }]);
+            break;
+            
+          case 'timeout':
+            setOutput(prev => [...prev, { prompt: '', text: '\nTimeout: El proceso excedió el tiempo límite', color: '#ff5555' }]);
+            break;
+            
+          case 'error':
+            setOutput(prev => [...prev, { prompt: '', text: `Error: ${data.message}`, color: '#ff5555' }]);
+            break;
+            
+          case 'stdin_sent':
+            // Confirmación de input enviado
+            break;
+            
+          default:
+            console.warn('Tipo de mensaje desconocido:', data.type);
         }
       } catch (error) {
-        // Si no es un JSON válido, simplemente muestra el mensaje como texto
-        console.warn('Mensaje no JSON recibido:', event.data);
-        setOutput((prevOutput) => prevOutput + '\n' + event.data);
+        console.error('Error al procesar mensaje:', error);
+        setOutput(prev => [...prev, { prompt: '', text: event.data, color: '#ffffff' }]);
       }
     };
-  
+
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
+      setOutput(prev => [...prev, { prompt: '', text: 'Error de conexión WebSocket', color: '#ff5555' }]);
     };
-  
+
     ws.onclose = () => {
       console.log('WebSocket desconectado');
+      setWsInstance(null);
     };
+
+    setWsInstance(ws);
   };
 
   React.useImperativeHandle(ref, () => ({
     getWebSocket: () => wsInstance,
-  }));  
+    focusEditor: () => {
+      if (editorRef.current) {
+        const model = editorRef.current.getModel();
+        if (model) {
+          const lastLine = model.getLineCount();
+          const lastColumn = model.getLineMaxColumn(lastLine);
+          editorRef.current.setPosition({ lineNumber: lastLine, column: lastColumn });
+        }
+        editorRef.current.focus();
+      }
+    },
+  }));
 
   const handleBreakpointClick = async (e) => {
     const monaco = await loader.init(); // Inicializa monaco
@@ -281,6 +457,21 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
+
+  // Manejar Alt+S en el editor
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.altKey && e.key === 's') {
+        e.preventDefault();
+        if (onSave) {
+          onSave();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onSave]);
   
   return (
     <Box ref={ref} style={{ height: '55%', display: 'flex', flexDirection: 'column', minHeight: 0}}>
@@ -296,9 +487,17 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
           color: contrast === 'high-contrast' ? '#fff' : '#000',
         }}
       >
-        <Breadcrumbs separator={<NavigateNextIcon fontSize="small" />} aria-label="breadcrumb">
-          {breadcrumbs}
-        </Breadcrumbs>
+        {/* Breadcrumbs con indicador de guardado */}
+      <Box sx={{ p: 1, borderBottom: 1, borderColor: 'divider' }}>
+        <Stack spacing={2}>
+          <Breadcrumbs 
+            separator="›" 
+            aria-label="Navegación de ubicación del archivo"
+          >
+            {breadcrumbs}
+          </Breadcrumbs>
+        </Stack>
+      </Box>
         <Box 
           display="flex" 
           flexWrap="wrap" 
@@ -368,13 +567,31 @@ const TextEditor = React.forwardRef(({ contrast, setOutput, setCodeStructure, ed
             options={{
               selectOnLineNumbers: true,
               minimap: { enabled: false },
-              scrollbar: { vertical: 'auto', horizontal: 'auto' },
+              scrollbar: { 
+                vertical: 'auto', 
+                horizontal: 'auto',
+                verticalScrollbarSize: 14,
+                horizontalScrollbarSize: 14,
+              },
               lineNumbers: 'on',
-              renderLineHighlight: 'none',
+              renderLineHighlight: 'all',
               padding: { top: 10, bottom: 10 },
               lineDecorationsWidth: 5,
               glyphMargin: true,
               border: 'none',
+              fontSize: fontSize,
+              fontWeight: contrast === 'high-contrast' ? '500' : 'normal',
+              letterSpacing: contrast === 'high-contrast' ? 0.5 : 0,
+              lineHeight: Math.round(fontSize * 1.5),
+              cursorWidth: 2,
+              cursorBlinking: 'smooth',
+              smoothScrolling: true,
+              // Aumentar contraste visual
+              renderWhitespace: contrast === 'high-contrast' ? 'boundary' : 'none',
+              guides: {
+                indentation: true,
+                highlightActiveIndentation: true,
+              },
             }}
             theme={getEditorTheme(contrast)}
             onMount={(editor) => {

@@ -5,7 +5,7 @@ import Debug from './Debug';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
-function TerminalTabs({ contrast, output, pid, onDebug, collapsed, onToggleCollapse, ...props }) { 
+function TerminalTabs({ contrast, output, pid, onDebug, collapsed, onToggleCollapse, textEditorRef, ...props }) { 
   const [value, setValue] = React.useState(0);
 
   const handleChange = (event, newValue) => {
@@ -65,14 +65,14 @@ function TerminalTabs({ contrast, output, pid, onDebug, collapsed, onToggleColla
       {!collapsed && (
         <Box sx={{ 
           padding: 1, 
-          bgcolor: contrast === 'high-contrast' ? '#1e1e1e' : '#d3d3d3',
+          bgcolor: contrast === 'high-contrast' ? '#000000' : '#d3d3d3',
           flex: 1,
           minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden'
         }}>
-          {value === 0 && <Terminal contrast={contrast} output={output} pid={pid}/>} 
+          {value === 0 && <Terminal contrast={contrast} output={output} pid={pid} textEditorRef={textEditorRef}/>} 
           {value === 1 && <Debug debug contrast={contrast} onDebug={onDebug}/>} 
         </Box>
       )}
@@ -81,12 +81,12 @@ function TerminalTabs({ contrast, output, pid, onDebug, collapsed, onToggleColla
       {collapsed && (
         <Box sx={{ 
           p: 1, 
-          bgcolor: contrast === 'high-contrast' ? '#1e1e1e' : '#d3d3d3',
+          bgcolor: contrast === 'high-contrast' ? '#000000' : '#d3d3d3',
           color: contrast === 'high-contrast' ? '#fff' : '#000',
           fontSize: '0.75rem',
           textAlign: 'center'
         }}>
-          {value === 0 ? 'Terminal listo' : 'Depurador listo'}
+          {/* {value === 0 ? 'Terminal listo' : 'Depurador listo'} */}
         </Box>
       )}
     </Box>
