@@ -3,11 +3,13 @@ import { Box, IconButton } from '@mui/material';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import ContrastIcon from '@mui/icons-material/Contrast';
-import ScreenReaderIcon from '@mui/icons-material/Hearing';
-// import Magnifier from './Magnifier';
+import VolumeUpIcon from '@mui/icons-material/VolumeUp';
+import VolumeOffIcon from '@mui/icons-material/VolumeOff';
+import { useScreenReader } from '../contexts/ScreenReaderContext';
 
 function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabled }) {
-  const [screenReaderEnabled, setScreenReaderEnabled] = React.useState(true);
+  const { enabled: screenReaderEnabled, toggle: toggleScreenReader } = useScreenReader();
+  
   const handleZoomIn = () => {
     setScale((prevScale) => Math.min(prevScale + 0.1, 3));
   };
@@ -22,13 +24,13 @@ function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabl
     );
   };
 
-  const toggleScreenReader = () => {
-    setScreenReaderEnabled((prevEnabled) => !prevEnabled);
-    // Aquí puedes añadir la lógica para activar/desactivar el lector de pantalla
-  };
-
   return (
-    <Box sx={{ height:'100vh'}}>
+    <Box sx={{ 
+      height: '100vh',
+      width: '100vw',
+      overflow: 'hidden',
+      position: 'relative'
+    }}>
       <Box
         id="capture-area"
         sx={{
@@ -36,11 +38,12 @@ function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabl
           transformOrigin: 'top left',
           backgroundColor: contrast === 'high-contrast' ? '#1e1e1e' : '#fff',
           color: contrast === 'high-contrast' ? '#fff' : '#1e1e1e',
-          border: '1px solid #ddd',
-          height: '100vh',
-          minHeight: '0px',
-          width: '100%',
-          transition: 'background-color 0.3s, color 0.3s',
+          height: `${100 / scale}vh`,
+          width: `${100 / scale}vw`,
+          transition: 'background-color 0.3s, color 0.3s, transform 0.2s ease',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column'
         }}
       >
         {children}
@@ -54,27 +57,65 @@ function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabl
           right: 16,
           display: 'flex',
           alignItems: 'center',
-          backgroundColor: '#fff',
+          backgroundColor: contrast === 'high-contrast' ? '#333' : '#fff',
           borderRadius: '8px',
-          boxShadow: '0px 0px 10px rgba(0, 0, 0, 0.1)',
+          boxShadow: '0px 0px 10px rgba(0, 0, 0, 0.2)',
+          padding: '4px',
+          zIndex: 9999
         }}
       >
-        <IconButton onClick={handleZoomOut}>
+        <IconButton 
+          onClick={handleZoomOut}
+          aria-label="Reducir zoom"
+          sx={{ 
+            color: contrast === 'high-contrast' ? '#fff' : '#000',
+            '&:hover': {
+              backgroundColor: contrast === 'high-contrast' ? '#555' : '#f0f0f0'
+            }
+          }}
+        >
           <ZoomOutIcon />
         </IconButton>
-        <IconButton onClick={handleZoomIn}>
+        
+        <IconButton 
+          onClick={handleZoomIn}
+          aria-label="Aumentar zoom"
+          sx={{ 
+            color: contrast === 'high-contrast' ? '#fff' : '#000',
+            '&:hover': {
+              backgroundColor: contrast === 'high-contrast' ? '#555' : '#f0f0f0'
+            }
+          }}
+        >
           <ZoomInIcon />
         </IconButton>
-        <IconButton onClick={toggleContrast}>
+        
+        <IconButton 
+          onClick={toggleContrast}
+          aria-label="Alternar contraste"
+          sx={{ 
+            color: contrast === 'high-contrast' ? '#fff' : '#000',
+            '&:hover': {
+              backgroundColor: contrast === 'high-contrast' ? '#555' : '#f0f0f0'
+            }
+          }}
+        >
           <ContrastIcon />
         </IconButton>
-        <IconButton onClick={toggleScreenReader}>
-          <ScreenReaderIcon />
+        
+        <IconButton 
+          onClick={toggleScreenReader}
+          aria-label={screenReaderEnabled ? "Desactivar lector de pantalla y notificaciones" : "Activar lector de pantalla y notificaciones"}
+          sx={{ 
+            color: contrast === 'high-contrast' ? '#fff' : '#000',
+            '&:hover': {
+              backgroundColor: contrast === 'high-contrast' ? '#555' : '#f0f0f0'
+            }
+          }}
+        >
+          {screenReaderEnabled ? <VolumeUpIcon /> : <VolumeOffIcon />}
         </IconButton>
       </Box>
-
-      {/* Componente de lupa */}
-      {/* <Magnifier enabled={magnifierEnabled} scale={2} /> */}
     </Box>
   );
 }

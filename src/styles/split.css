@@ -1,15 +1,63 @@
-/* Añadir en tu archivo CSS */
 .gutter {
-    background-color: #ddd;
-    background-repeat: no-repeat;
-    background-position: 50%;
-  }
-  
+  background-color: #ddd;
+  background-repeat: no-repeat;
+  background-position: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.gutter:hover {
+  background-color: #bbb;
+}
+
+.gutter.gutter-horizontal {
+  cursor: col-resize;
+  width: 14px !important;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="14" height="100%" viewBox="0 0 14 100"><rect x="6" y="0" width="2" height="100%" fill="%23666"/><rect x="11" y="0" width="2" height="100%" fill="%23666"/></svg>');
+}
+
+.gutter.gutter-vertical {
+  cursor: row-resize;
+  height: 14px !important;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="12" viewBox="0 0 100 10"><rect x="0" y="2" width="100%" height="1" fill="%23666"/><rect x="0" y="5" width="100%" height="1" fill="%23666"/></svg>');
+}
+
+.split-horizontal {
+  height: 100% !important;
+}
+
+.split-vertical {
+  height: 100% !important;
+}
+
+.split-vertical-filemanager {
+  height: 100% !important;
+}
+
+.split-vertical-filemanager .gutter {
+  background-color: #ccc;
+}
+
+.split-vertical-filemanager .gutter:hover {
+  background-color: #aaa;
+}
+
+/* Responsive breakpoints */
+@media (max-width: 768px) {
   .gutter.gutter-horizontal {
-    cursor: col-resize;
+    width: 12px !important;
   }
   
   .gutter.gutter-vertical {
-    cursor: row-resize;
+    height: 12px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .gutter.gutter-horizontal {
+    width: 16px !important;
   }
   
+  .gutter.gutter-vertical {
+    height: 16px !important;
+  }
+}
