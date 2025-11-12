@@ -117,8 +117,18 @@ function AppearanceModal({
             min={16}
             max={64}
             step={4}
-            sx={{ color: textColor }}
-            marks={[
+            sx={{ 
+              color: textColor,
+              '& .MuiSlider-markLabel': {
+                color: textColor,
+                opacity: 0.7
+              },
+              '& .MuiSlider-mark': {
+                backgroundColor: textColor,
+                opacity: 0.3
+              }
+            }}
+              marks={[
               { value: 16, label: '16px' },
               { value: 32, label: '32px' },
               { value: 48, label: '48px' },
@@ -139,7 +149,17 @@ function AppearanceModal({
             min={12}
             max={24}
             step={1}
-            sx={{ color: textColor }}
+            sx={{ 
+              color: textColor,
+              '& .MuiSlider-markLabel': {
+                color: textColor,
+                opacity: 0.7
+              },
+              '& .MuiSlider-mark': {
+                backgroundColor: textColor,
+                opacity: 0.3
+              }
+            }}
             marks={[
               { value: 12, label: '12px' },
               { value: 14, label: '14px' },

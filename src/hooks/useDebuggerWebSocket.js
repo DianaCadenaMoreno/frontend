@@ -7,9 +7,18 @@ export const useDebuggerWebSocket = (onMessage) => {
     isDebugging: false,
     currentLine: null,
     currentFile: null,
-    variables: {},
+    currentCode: null,
+    function: null,
+    variables: {
+      locals: {},
+      globals: {},
+      instance: {}
+    },
     breakpoints: [],
-    error: null
+    error: null,
+    lastEvaluation: null,
+    stackDepth: 0,
+    exception: null
   });
 
   const connect = useCallback(() => {
@@ -19,17 +28,17 @@ export const useDebuggerWebSocket = (onMessage) => {
 
     try {
       //const ws = new WebSocket('ws://localhost/ws/debugger/');
-      const ws = new WebSocket('wss://https://backend-g1zl.onrender.com/ws/debugger/');
+      const ws = new WebSocket('wss://backend-g1zl.onrender.com/ws/debugger/');
       
       ws.onopen = () => {
-        console.log('✅ WebSocket debugger conectado');
+        console.log('WebSocket debugger conectado');
         setIsConnected(true);
       };
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('📨 Mensaje del debugger:', data);
+          console.log('Mensaje del debugger:', data);
           
           handleDebugMessage(data);
           
@@ -42,7 +51,7 @@ export const useDebuggerWebSocket = (onMessage) => {
       };
 
       ws.onerror = (error) => {
-        console.error('❌ Error en WebSocket debugger:', error);
+        console.error('Error en WebSocket debugger:', error);
         setDebugState(prev => ({
           ...prev,
           error: 'Error de conexión con el debugger'
@@ -50,11 +59,14 @@ export const useDebuggerWebSocket = (onMessage) => {
       };
 
       ws.onclose = () => {
-        console.log('🔌 WebSocket debugger desconectado');
+        console.log('WebSocket debugger desconectado');
         setIsConnected(false);
         setDebugState(prev => ({
           ...prev,
-          isDebugging: false
+          isDebugging: false,
+          currentLine: null,
+          currentFile: null,
+          variables: { locals: {}, globals: {}, instance: {} }
         }));
       };
 
@@ -66,7 +78,12 @@ export const useDebuggerWebSocket = (onMessage) => {
 
   const handleDebugMessage = useCallback((data) => {
     switch (data.type) {
+      case 'info':
+        console.log('Info:', data.message);
+        break;
+
       case 'debug_started':
+        console.log('Debug iniciado:', data.file);
         setDebugState(prev => ({
           ...prev,
           isDebugging: true,
@@ -77,22 +94,36 @@ export const useDebuggerWebSocket = (onMessage) => {
         break;
 
       case 'breakpoint_hit':
+        console.log('Breakpoint alcanzado:', data.line);
         setDebugState(prev => ({
           ...prev,
           currentLine: data.line,
           currentFile: data.file,
-          variables: data.variables || {}
+          currentCode: data.code,
+          function: data.function,
+          variables: {
+            locals: data.variables?.locals || {},
+            globals: data.variables?.globals || {},
+            instance: data.variables?.instance || {}
+          },
+          stackDepth: data.stack_depth || 0
         }));
         break;
 
+      case 'function_return':
+        console.log(`Función ${data.function} retornó:`, data.value);
+        break;
+
       case 'breakpoint_set':
+        console.log('Breakpoint configurado:', `${data.file}:${data.line}`);
         setDebugState(prev => ({
           ...prev,
-          breakpoints: [...prev.breakpoints, `${data.file}:${data.line}`]
+          breakpoints: [...new Set([...prev.breakpoints, `${data.file}:${data.line}`])]
         }));
         break;
 
       case 'breakpoint_removed':
+        console.log('Breakpoint eliminado:', `${data.file}:${data.line}`);
         setDebugState(prev => ({
           ...prev,
           breakpoints: prev.breakpoints.filter(
@@ -102,13 +133,19 @@ export const useDebuggerWebSocket = (onMessage) => {
         break;
 
       case 'variables':
+        console.log('Variables actualizadas');
         setDebugState(prev => ({
           ...prev,
-          variables: data.data || {}
+          variables: {
+            locals: data.data?.locals || {},
+            globals: data.data?.globals || {},
+            instance: data.data?.instance || {}
+          }
         }));
         break;
 
       case 'evaluation_result':
+        console.log('Resultado evaluación:', data.result);
         setDebugState(prev => ({
           ...prev,
           lastEvaluation: {
@@ -119,17 +156,56 @@ export const useDebuggerWebSocket = (onMessage) => {
         break;
 
       case 'debug_stopped':
-      case 'debug_finished':
+        console.log('Debug detenido');
         setDebugState(prev => ({
           ...prev,
           isDebugging: false,
           currentLine: null,
-          currentFile: null
+          currentFile: null,
+          currentCode: null,
+          variables: { locals: {}, globals: {}, instance: {} }
+        }));
+        break;
+
+      case 'debug_finished':
+        console.log('Debug completado');
+        setDebugState(prev => ({
+          ...prev,
+          isDebugging: false,
+          currentLine: null,
+          currentFile: null,
+          currentCode: null
         }));
         break;
 
       case 'debug_error':
+        console.error('Excepción durante depuración:', data);
+        
+        //  Solo actualizar si no hay excepción previa
+        setDebugState(prev => {
+          if (prev.exception) {
+            console.log('Ignorando excepción duplicada');
+            return prev; // No actualizar si ya hay una excepción
+          }
+          
+          return {
+            ...prev,
+            exception: {
+              type: data.exception_type,
+              message: data.error,
+              line: data.line,
+              file: data.file
+            },
+            error: `${data.exception_type}: ${data.error}`,
+            isDebugging: false,
+            currentLine: data.line, 
+            currentFile: data.file 
+          };
+        });
+        break;
+        
       case 'error':
+        console.error('Error:', data.message || data.error);
         setDebugState(prev => ({
           ...prev,
           error: data.message || data.error
@@ -143,6 +219,7 @@ export const useDebuggerWebSocket = (onMessage) => {
 
   const sendMessage = useCallback((message) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log('Enviando:', message);
       wsRef.current.send(JSON.stringify(message));
     } else {
       console.error('WebSocket no está conectado');
@@ -229,6 +306,7 @@ export const useDebuggerWebSocket = (onMessage) => {
     uploadFiles,
     startDebug,
     setBreakpoint,
+    setDebugState,
     removeBreakpoint,
     step,
     stepInto,

@@ -73,7 +73,7 @@ function TerminalTabs({ contrast, output, pid, onDebug, collapsed, onToggleColla
           overflow: 'hidden'
         }}>
           {value === 0 && <Terminal contrast={contrast} output={output} pid={pid} textEditorRef={textEditorRef}/>} 
-          {value === 1 && <Debug debug contrast={contrast} onDebug={onDebug}/>} 
+          {value === 1 && <Debug debug contrast={contrast} textEditorRef={textEditorRef} onDebug={onDebug}/>} 
         </Box>
       )}
 

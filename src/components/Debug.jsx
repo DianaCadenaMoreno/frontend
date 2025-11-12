@@ -1,17 +1,18 @@
-import React, { useState } from 'react';
-import { Box, TextField, Button, Grid, Typography, Paper, Chip, IconButton, Divider } from '@mui/material';
-import BugReportIcon from '@mui/icons-material/BugReport';
+import React, { useState, useEffect } from 'react';
+import { Box, TextField, Button, Grid, Typography, Paper, Chip, IconButton, Divider, Alert, AlertTitle } from '@mui/material';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import SkipNextIcon from '@mui/icons-material/SkipNext';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import AddCircleIcon from '@mui/icons-material/AddCircle';
+import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import { useDebuggerWebSocket } from '../hooks/useDebuggerWebSocket';
 
-function Debug({ contrast, onDebug, textEditorRef }) {
-  const [startLine, setStartLine] = useState('');
-  const [endLine, setEndLine] = useState('');
+function Debug({ contrast, textEditorRef }) {
+  const [breakpointLine, setBreakpointLine] = useState('');
+  const [manualBreakpoints, setManualBreakpoints] = useState([]);
   const [evalExpression, setEvalExpression] = useState('');
 
   const {
@@ -20,6 +21,8 @@ function Debug({ contrast, onDebug, textEditorRef }) {
     uploadFiles,
     startDebug,
     setBreakpoint,
+    setDebugState,
+    removeBreakpoint,
     step,
     stepInto,
     stepOver,
@@ -28,6 +31,25 @@ function Debug({ contrast, onDebug, textEditorRef }) {
     evaluateExpression,
     stopDebug
   } = useDebuggerWebSocket();
+
+  // Solicitar variables cada vez que se llega a un breakpoint
+  useEffect(() => {
+    if (debugState.currentLine && debugState.isDebugging) {
+      setTimeout(() => getVariables(), 100);
+    }
+  }, [debugState.currentLine, debugState.isDebugging, getVariables]);
+
+  const handleAddBreakpoint = () => {
+    const line = parseInt(breakpointLine);
+    if (!isNaN(line) && line > 0 && !manualBreakpoints.includes(line)) {
+      setManualBreakpoints([...manualBreakpoints, line].sort((a, b) => a - b));
+      setBreakpointLine('');
+    }
+  };
+
+  const handleRemoveBreakpoint = (line) => {
+    setManualBreakpoints(manualBreakpoints.filter(l => l !== line));
+  };
 
   const handleDebug = async () => {
     if (!textEditorRef?.current) {
@@ -40,45 +62,55 @@ function Debug({ contrast, onDebug, textEditorRef }) {
     
     if (!currentFile) {
       console.error('No hay archivo abierto');
+      alert('Por favor abre un archivo primero');
       return;
     }
 
-    if (!currentContent) {
+    if (!currentContent || currentContent.trim() === '') {
       console.error('No hay contenido en el archivo');
+      alert('El archivo está vacío');
       return;
     }
 
-    const start = parseInt(startLine);
-    const end = parseInt(endLine);
-
-    if (isNaN(start) || isNaN(end) || start > end) {
-      console.error('Líneas inválidas');
+    if (manualBreakpoints.length === 0) {
+      console.error('Debes agregar al menos un breakpoint');
+      alert('Debes agregar al menos un breakpoint');
       return;
     }
 
-    // Primero subir los archivos al backend
+    // Subir archivos
     const files = {
       [currentFile]: currentContent
     };
     
+    console.log('📤 Subiendo archivos...', { file: currentFile, lines: currentContent.split('\n').length });
     uploadFiles(files);
 
-    // Esperar un momento para que se suban los archivos
+    // Configurar breakpoints después de subir archivos
     setTimeout(() => {
-      // Configurar breakpoints en el rango de líneas
-      for (let line = start; line <= end; line++) {
+      console.log('🔴 Configurando breakpoints:', manualBreakpoints);
+      manualBreakpoints.forEach(line => {
         setBreakpoint(currentFile, line);
-      }
+      });
 
       // Iniciar depuración
-      startDebug(currentFile);
+      setTimeout(() => {
+        console.log('▶️ Iniciando depuración en', currentFile);
+        startDebug(currentFile);
+      }, 500);
     }, 500);
   };
 
   const handleEvaluate = () => {
-    if (evalExpression.trim()) {
-      evaluateExpression(evalExpression);
+    if (evalExpression.trim() && debugState.isDebugging) {
+      evaluateExpression(evalExpression.trim());
+      setEvalExpression('');
     }
+  };
+
+  const handleStopDebug = () => {
+    stopDebug();
+    setManualBreakpoints([]);
   };
 
   const getThemeColors = (contrast) => {
@@ -93,7 +125,9 @@ function Debug({ contrast, onDebug, textEditorRef }) {
           accent: '#f7ff0fff',
           buttonBg: '#f7ff0fff',
           buttonText: '#000000',
-          inputBg: '#1a1a1a'
+          inputBg: '#1a1a1a',
+          success: '#4caf50',
+          error: '#ff5555'
         };
       case 'blue-contrast':
         return {
@@ -105,7 +139,9 @@ function Debug({ contrast, onDebug, textEditorRef }) {
           accent: '#4FC3F7',
           buttonBg: '#4FC3F7',
           buttonText: '#000000',
-          inputBg: '#1a2332'
+          inputBg: '#1a2332',
+          success: '#4caf50',
+          error: '#ff5555'
         };
       case 'yellow-contrast':
         return {
@@ -117,7 +153,9 @@ function Debug({ contrast, onDebug, textEditorRef }) {
           accent: '#D32F2F',
           buttonBg: '#D32F2F',
           buttonText: '#ffffff',
-          inputBg: '#ffffff'
+          inputBg: '#ffffff',
+          success: '#388E3C',
+          error: '#D32F2F'
         };
       default:
         return {
@@ -129,7 +167,9 @@ function Debug({ contrast, onDebug, textEditorRef }) {
           accent: '#1976d2',
           buttonBg: '#1976d2',
           buttonText: '#ffffff',
-          inputBg: '#ffffff'
+          inputBg: '#ffffff',
+          success: '#4caf50',
+          error: '#f44336'
         };
     }
   };
@@ -155,10 +195,9 @@ function Debug({ contrast, onDebug, textEditorRef }) {
         pb: 2,
         borderBottom: `2px solid ${themeColors.border}`
       }}>
-        {/* <BugReportIcon sx={{ mr: 1, color: themeColors.accent, fontSize: 28 }} /> */}
-        <Typography variant="h6" sx={{ color: themeColors.text, fontWeight: 600 }}>
+        {/* <Typography variant="h6" sx={{ color: themeColors.text, fontWeight: 600 }}>
           Depurador de Código
-        </Typography>
+        </Typography> */}
         <Chip 
           label={isConnected ? 'Conectado' : 'Desconectado'}
           color={isConnected ? 'success' : 'error'}
@@ -167,130 +206,99 @@ function Debug({ contrast, onDebug, textEditorRef }) {
       </Box>
 
       <Grid container spacing={3}>
-        {/* Campo de línea de inicio */}
-        <Grid item xs={12} sm={6}>
-          <TextField
-            label="Línea de inicio"
-            placeholder="Ej: 1"
-            value={startLine}
-            onChange={(e) => setStartLine(e.target.value)}
-            variant="outlined"
-            fullWidth
-            type="number"
-            inputProps={{ 
-              'aria-label': 'Línea de inicio',
-              min: 1
-            }}
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                color: themeColors.text,
-                backgroundColor: themeColors.inputBg,
-                '& fieldset': {
-                  borderColor: themeColors.border,
-                  borderWidth: 2
-                },
-                '&:hover fieldset': {
-                  borderColor: themeColors.accent
-                },
-                '&.Mui-focused fieldset': {
-                  borderColor: themeColors.accent,
-                  borderWidth: 2
-                }
-              },
-              '& .MuiInputLabel-root': {
-                color: themeColors.textSecondary,
-                fontWeight: 500,
-                '&.Mui-focused': {
-                  color: themeColors.accent,
-                  fontWeight: 600
-                }
-              },
-              '& .MuiInputBase-input': {
-                fontSize: '16px',
-                fontWeight: 500
-              },
-              '& .MuiInputBase-input::placeholder': {
-                color: themeColors.textSecondary,
-                opacity: 0.7
-              }
-            }}
-          />
-        </Grid>
-
-        {/* Campo de línea final */}
-        <Grid item xs={12} sm={6}>
-          <TextField
-            label="Línea final"
-            placeholder="Ej: 10"
-            value={endLine}
-            onChange={(e) => setEndLine(e.target.value)}
-            variant="outlined"
-            fullWidth
-            type="number"
-            inputProps={{ 
-              'aria-label': 'Línea final',
-              min: 1
-            }}
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                color: themeColors.text,
-                backgroundColor: themeColors.inputBg,
-                '& fieldset': {
-                  borderColor: themeColors.border,
-                  borderWidth: 2
-                },
-                '&:hover fieldset': {
-                  borderColor: themeColors.accent
-                },
-                '&.Mui-focused fieldset': {
-                  borderColor: themeColors.accent,
-                  borderWidth: 2
-                }
-              },
-              '& .MuiInputLabel-root': {
-                color: themeColors.textSecondary,
-                fontWeight: 500,
-                '&.Mui-focused': {
-                  color: themeColors.accent,
-                  fontWeight: 600
-                }
-              },
-              '& .MuiInputBase-input': {
-                fontSize: '16px',
-                fontWeight: 500
-              },
-              '& .MuiInputBase-input::placeholder': {
-                color: themeColors.textSecondary,
-                opacity: 0.7
-              }
-            }}
-          />
-        </Grid>
-
-        {/* Descripción */}
-        {/* <Grid item xs={12}>
-          <Box sx={{ 
-            p: 2, 
-            backgroundColor: themeColors.surface,
-            borderRadius: 1,
-            border: `1px solid ${themeColors.border}`
-          }}>
-            <Typography variant="body2" sx={{ color: themeColors.textSecondary }}>
-              <strong>Tip:</strong> Selecciona el rango de líneas que deseas depurar. 
-              El depurador analizará el código entre estas líneas y te mostrará información detallada.
-            </Typography>
-          </Box>
-        </Grid> */}
-
-        {/* Botón de inicio */}
-        {/* Botón de inicio / Controles de depuración */}
+        {/* Agregar breakpoints */}
         <Grid item xs={12}>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600, color: themeColors.accent }}>
+            Breakpoints (Puntos de Interrupción)
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+            <TextField
+              label="Número de línea"
+              placeholder="Ej: 46"
+              value={breakpointLine}
+              onChange={(e) => setBreakpointLine(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleAddBreakpoint()}
+              variant="outlined"
+              type="number"
+              disabled={debugState.isDebugging}
+              inputProps={{ 
+                'aria-label': 'Número de línea para breakpoint',
+                min: 1
+              }}
+              sx={{
+                flex: 1,
+                '& .MuiOutlinedInput-root': {
+                  color: themeColors.text,
+                  backgroundColor: themeColors.inputBg,
+                  '& fieldset': { borderColor: themeColors.border },
+                  '&:hover fieldset': { borderColor: themeColors.accent },
+                  '&.Mui-focused fieldset': { borderColor: themeColors.accent }
+                },
+                '& .MuiInputLabel-root': { color: themeColors.textSecondary }
+              }}
+            />
+            <Button
+              variant="contained"
+              onClick={handleAddBreakpoint}
+              disabled={!breakpointLine || debugState.isDebugging}
+              startIcon={<AddCircleIcon />}
+              sx={{
+                backgroundColor: themeColors.buttonBg,
+                color: themeColors.buttonText,
+                '&:hover': {
+                  backgroundColor: themeColors.buttonBg,
+                  filter: 'brightness(0.9)'
+                }
+              }}
+            >
+              Agregar
+            </Button>
+          </Box>
+
+          {/* Lista de breakpoints */}
+          {manualBreakpoints.length > 0 && (
+            <Paper sx={{ mt: 2, p: 2, backgroundColor: themeColors.surface }}>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 600, color: themeColors.text }}>
+                Breakpoints configurados:
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {manualBreakpoints.map(line => (
+                  <Chip
+                    key={line}
+                    label={`Línea ${line}`}
+                    onDelete={debugState.isDebugging ? undefined : () => handleRemoveBreakpoint(line)}
+                    deleteIcon={<RemoveCircleIcon />}
+                    color={debugState.currentLine === line ? 'success' : 'default'}
+                    sx={{
+                      backgroundColor: debugState.currentLine === line ? themeColors.success : themeColors.inputBg,
+                      color: debugState.currentLine === line ? '#fff' : themeColors.text,
+                      border: `2px solid ${debugState.currentLine === line ? themeColors.success : themeColors.border}`,
+                      fontWeight: debugState.currentLine === line ? 600 : 400,
+                      '& .MuiChip-deleteIcon': {
+                        color: debugState.currentLine === line ? '#fff' : themeColors.text,
+                        '&:hover': {
+                          color: debugState.currentLine === line ? '#ffebee' : themeColors.accent
+                        }
+                      }
+                    }}
+                  />
+                ))}
+              </Box>
+            </Paper>
+          )}
+        </Grid>
+
+        {/* Controles de depuración */}
+        <Grid item xs={12}>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600, color: themeColors.accent }}>
+            Controles
+          </Typography>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             {!debugState.isDebugging ? (
               <Button 
                 variant="contained" 
                 onClick={handleDebug}
-                disabled={!startLine || !endLine || !isConnected}
+                disabled={manualBreakpoints.length === 0 || !isConnected}
                 aria-label="Iniciar depuración" 
                 fullWidth
                 startIcon={<PlayArrowIcon />}
@@ -314,30 +322,64 @@ function Debug({ contrast, onDebug, textEditorRef }) {
               </Button>
             ) : (
               <>
-                <IconButton onClick={step} title="Step" sx={{ color: themeColors.accent }}>
-                  <NavigateNextIcon />
-                </IconButton>
-                <IconButton onClick={stepInto} title="Step Into" sx={{ color: themeColors.accent }}>
-                  <ArrowForwardIcon />
-                </IconButton>
-                <IconButton onClick={stepOver} title="Step Over" sx={{ color: themeColors.accent }}>
-                  <SkipNextIcon />
-                </IconButton>
-                <IconButton onClick={continueExecution} title="Continue" sx={{ color: themeColors.accent }}>
-                  <PlayArrowIcon />
-                </IconButton>
-                <IconButton onClick={getVariables} title="Actualizar Variables" sx={{ color: themeColors.accent }}>
-                  <RefreshIcon />
-                </IconButton>
+                <Button
+                  variant="contained"
+                  onClick={step}
+                  startIcon={<NavigateNextIcon />}
+                  sx={{ 
+                    backgroundColor: themeColors.buttonBg,
+                    color: themeColors.buttonText,
+                    flex: 1
+                  }}
+                >
+                  Step
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={stepInto}
+                  startIcon={<ArrowForwardIcon />}
+                  sx={{ 
+                    backgroundColor: themeColors.buttonBg,
+                    color: themeColors.buttonText,
+                    flex: 1
+                  }}
+                >
+                  Step Into
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={stepOver}
+                  startIcon={<SkipNextIcon />}
+                  sx={{ 
+                    backgroundColor: themeColors.buttonBg,
+                    color: themeColors.buttonText,
+                    flex: 1
+                  }}
+                >
+                  Step Over
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={continueExecution}
+                  startIcon={<PlayArrowIcon />}
+                  sx={{ 
+                    backgroundColor: themeColors.success,
+                    color: '#fff',
+                    flex: 1
+                  }}
+                >
+                  Continuar
+                </Button>
                 <Button 
                   variant="outlined"
-                  onClick={stopDebug}
+                  onClick={handleStopDebug}
                   startIcon={<StopIcon />}
                   sx={{ 
-                    color: themeColors.accent,
-                    borderColor: themeColors.accent,
+                    color: themeColors.error,
+                    borderColor: themeColors.error,
+                    flex: 1,
                     '&:hover': { 
-                      borderColor: themeColors.accent, 
+                      borderColor: themeColors.error, 
                       backgroundColor: 'rgba(255,0,0,0.1)' 
                     }
                   }}
@@ -349,6 +391,7 @@ function Debug({ contrast, onDebug, textEditorRef }) {
           </Box>
         </Grid>
       </Grid>
+
       {/* Estado actual */}
       {debugState.isDebugging && (
         <Paper sx={{ p: 2, backgroundColor: themeColors.surface, mt: 2 }}>
@@ -356,44 +399,211 @@ function Debug({ contrast, onDebug, textEditorRef }) {
             Estado Actual
           </Typography>
           <Typography variant="body2" sx={{ color: themeColors.text }}>
-            Archivo: {debugState.currentFile || 'N/A'}
+            <strong>Archivo:</strong> {debugState.currentFile || 'N/A'}
           </Typography>
           <Typography variant="body2" sx={{ color: themeColors.text }}>
-            Línea: {debugState.currentLine || 'N/A'}
+            <strong>Línea actual:</strong> {debugState.currentLine || 'N/A'}
           </Typography>
         </Paper>
       )}
 
-      {/* Variables */}
-      {Object.keys(debugState.variables).length > 0 && (
-        <Paper sx={{ p: 2, backgroundColor: themeColors.surface, mt: 2 }}>
-          <Typography variant="subtitle2" sx={{ color: themeColors.accent, mb: 1, fontWeight: 600 }}>
-            Variables
+      {/*  Mostrar excepción si existe */}
+      {debugState.exception && (
+        <Alert 
+          severity="error" 
+          sx={{ 
+            mt: 2, 
+            mb: 2,
+            backgroundColor: themeColors.error + '22',
+            border: `2px solid ${themeColors.error}`,
+            '& .MuiAlert-icon': {
+              color: themeColors.error
+            }
+          }}
+        >
+          <AlertTitle sx={{ fontWeight: 600, color: themeColors.text }}>
+            {debugState.exception.type}
+          </AlertTitle>
+          <Typography variant="body2" sx={{ color: themeColors.text, mb: 1 }}>
+            <strong>Error:</strong> {debugState.exception.message}
           </Typography>
-          <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
-            {Object.entries(debugState.variables).map(([name, info]) => (
-              <Box key={name} sx={{ mb: 1, p: 1, backgroundColor: themeColors.inputBg, borderRadius: 1 }}>
-                <Typography variant="body2" sx={{ color: themeColors.text }}>
-                  <strong>{name}</strong> ({info.type}): {info.value}
-                </Typography>
-              </Box>
-            ))}
+          <Typography variant="body2" sx={{ color: themeColors.text, mb: 1 }}>
+            <strong>Archivo:</strong> {debugState.exception.file}
+          </Typography>
+          <Typography variant="body2" sx={{ color: themeColors.text }}>
+            <strong>Línea:</strong> {debugState.exception.line}
+          </Typography>
+        </Alert>
+      )}
+
+      {/* Variables mejoradas */}
+      {debugState.variables && (
+        <Paper sx={{ p: 2, backgroundColor: themeColors.surface, mt: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ color: themeColors.accent, fontWeight: 600 }}>
+              Variables en Línea {debugState.currentLine}
+            </Typography>
+            {debugState.function && (
+              <Chip 
+                label={`Función: ${debugState.function}`} 
+                size="small"
+                sx={{ backgroundColor: themeColors.accent, color: themeColors.buttonText }}
+              />
+            )}
           </Box>
+
+          {/* Variables locales */}
+          {debugState.variables.locals && Object.keys(debugState.variables.locals).length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: themeColors.text }}>
+                Variables Locales:
+              </Typography>
+              <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
+                {Object.entries(debugState.variables.locals).map(([name, info]) => (
+                  <Box 
+                    key={name} 
+                    sx={{ 
+                      mb: 1, 
+                      p: 1.5, 
+                      backgroundColor: themeColors.inputBg, 
+                      borderRadius: 1,
+                      borderLeft: `3px solid ${themeColors.accent}`
+                    }}
+                  >
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        color: themeColors.text,
+                        fontFamily: 'monospace',
+                        fontWeight: 600
+                      }}
+                    >
+                      {name} <span style={{ color: themeColors.textSecondary, fontWeight: 'normal' }}>({info.type})</span>
+                    </Typography>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        color: themeColors.textSecondary,
+                        fontFamily: 'monospace',
+                        mt: 0.5,
+                        pl: 2,
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      {String(info.str || info.value)}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          )}
+
+          {/* Variables de instancia (self) */}
+          {debugState.variables.instance && Object.keys(debugState.variables.instance).length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: themeColors.text }}>
+                Atributos de Instancia (self):
+              </Typography>
+              <Box sx={{ maxHeight: 150, overflow: 'auto' }}>
+                {Object.entries(debugState.variables.instance).map(([name, info]) => (
+                  <Box 
+                    key={name} 
+                    sx={{ 
+                      mb: 1, 
+                      p: 1.5, 
+                      backgroundColor: themeColors.inputBg, 
+                      borderRadius: 1,
+                      borderLeft: `3px solid #4caf50`
+                    }}
+                  >
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        color: themeColors.text,
+                        fontFamily: 'monospace',
+                        fontWeight: 600
+                      }}
+                    >
+                      self.{name} <span style={{ color: themeColors.textSecondary, fontWeight: 'normal' }}>({info.type})</span>
+                    </Typography>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        color: themeColors.textSecondary,
+                        fontFamily: 'monospace',
+                        mt: 0.5,
+                        pl: 2,
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      {String(info.str || info.value)}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          )}
+
+          {/* Variables globales */}
+          {debugState.variables.globals && Object.keys(debugState.variables.globals).length > 0 && (
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: themeColors.text }}>
+                Variables Globales:
+              </Typography>
+              <Box sx={{ maxHeight: 150, overflow: 'auto' }}>
+                {Object.entries(debugState.variables.globals).map(([name, info]) => (
+                  <Box 
+                    key={name} 
+                    sx={{ 
+                      mb: 1, 
+                      p: 1.5, 
+                      backgroundColor: themeColors.inputBg, 
+                      borderRadius: 1,
+                      borderLeft: `3px solid #ff9800`
+                    }}
+                  >
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        color: themeColors.text,
+                        fontFamily: 'monospace',
+                        fontWeight: 600
+                      }}
+                    >
+                      {name} <span style={{ color: themeColors.textSecondary, fontWeight: 'normal' }}>({info.type})</span>
+                    </Typography>
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        color: themeColors.textSecondary,
+                        fontFamily: 'monospace',
+                        mt: 0.5,
+                        pl: 2,
+                        fontSize: '0.9rem'
+                      }}
+                    >
+                      {String(info.str || info.value)}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          )}
         </Paper>
       )}
 
       {/* Evaluador de expresiones */}
-      {debugState.isDebugging && (
+      {/* {debugState.isDebugging && (
         <Box sx={{ mt: 2 }}>
           <Divider sx={{ my: 2, borderColor: themeColors.border }} />
           <Typography variant="subtitle2" sx={{ color: themeColors.accent, mb: 2, fontWeight: 600 }}>
-            Evaluador de Expresiones
+            💻 Evaluador de Expresiones
           </Typography>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={8}>
               <TextField
                 label="Evaluar expresión"
-                placeholder="Ej: x + y"
+                placeholder="Ej: calc.add(5, 3)"
                 value={evalExpression}
                 onChange={(e) => setEvalExpression(e.target.value)}
                 variant="outlined"
@@ -429,21 +639,20 @@ function Debug({ contrast, onDebug, textEditorRef }) {
           {debugState.lastEvaluation && (
             <Paper sx={{ p: 2, mt: 2, backgroundColor: themeColors.surface }}>
               <Typography variant="body2" sx={{ color: themeColors.text }}>
-                <strong>{debugState.lastEvaluation.expression}</strong> = {debugState.lastEvaluation.result}
+                <strong>{debugState.lastEvaluation.expression}</strong> = {String(debugState.lastEvaluation.result)}
               </Typography>
             </Paper>
           )}
         </Box>
-      )}
+      )} */}
 
+      
       {/* Errores */}
-      {debugState.error && (
-        <Paper sx={{ p: 2, mt: 2, backgroundColor: '#ffebee' }}>
-          <Typography variant="body2" sx={{ color: '#c62828', fontWeight: 500 }}>
-            ⚠️ Error: {debugState.error}
-          </Typography>
-        </Paper>
-      )}
+      {/* {debugState.error && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {debugState.error}
+        </Alert>
+      )} */}
     </Box>
   );
 }

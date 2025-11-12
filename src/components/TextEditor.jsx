@@ -139,6 +139,9 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
   
   // Función para activar el foco en el editor
   React.useImperativeHandle(ref, () => ({
+    getWebSocket: () => wsInstance,
+    getCurrentFileName: () => currentFileName,
+    getContent: () => editorContent,
     focusEditor: () => {
       if (editorRef.current) {
         const model = editorRef.current.getModel();
@@ -360,21 +363,6 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
 
     setWsInstance(ws);
   };
-
-  React.useImperativeHandle(ref, () => ({
-    getWebSocket: () => wsInstance,
-    focusEditor: () => {
-      if (editorRef.current) {
-        const model = editorRef.current.getModel();
-        if (model) {
-          const lastLine = model.getLineCount();
-          const lastColumn = model.getLineMaxColumn(lastLine);
-          editorRef.current.setPosition({ lineNumber: lastLine, column: lastColumn });
-        }
-        editorRef.current.focus();
-      }
-    },
-  }));
 
   const handleBreakpointClick = async (e) => {
     const monaco = await loader.init(); // Inicializa monaco
