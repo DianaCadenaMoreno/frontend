@@ -26,6 +26,7 @@ import remarkGfm from 'remark-gfm';
 import '../styles/FileManager.css'
 import { useScreenReader } from '../contexts/ScreenReaderContext';
 import { useAppNavigation } from '../contexts/NavigationContext';
+import { useInteractionMode } from '../contexts/InteractionModeContext';
 
 // Constantes para límites de almacenamiento
 const MAX_FILES = 50;
@@ -67,12 +68,17 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
   const [itemToModify, setItemToModify] = React.useState(null);
   const [storageWarningOpen, setStorageWarningOpen] = React.useState(false);
   const [storageWarningMessage, setStorageWarningMessage] = React.useState('');
-  const { registerComponent, unregisterComponent, setFocusedComponent } = useAppNavigation();
+  const {registerComponent, unregisterComponent, setFocusedComponent } = useAppNavigation();
   const fileManagerContainerRef = React.useRef(null);
   const [isFileManagerFocused, setIsFileManagerFocused] = React.useState(false);
   // const [selectedIndex, setFocusedIndex] = React.useState(0);
   // const [selectedElement, setSelectedElement] = React.useState(null);
   const [selectedIndex, setSelectedIndex] = React.useState(0)
+  const { isKeyboardMode } = useInteractionMode();
+  const createDialogInputRef = React.useRef(null);
+  const renameDialogInputRef = React.useRef(null);
+  const [lastInteractionWasKeyboard, setLastInteractionWasKeyboard] = React.useState(false);
+
 
   // Función para obtener colores del tema
   const getThemeColors = (contrast) => {
@@ -187,7 +193,6 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
   }, [announce, speak, speakOnHover]);
 
   // Función para abrir menú contextual
-  // Función para abrir menú contextual
   const handleContextMenu = React.useCallback((event, item) => {
     event.preventDefault();
     event.stopPropagation();
@@ -211,6 +216,143 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
   const handleCloseContextMenu = () => {
     setContextMenu(null);
   };
+
+  // Manejar cambios en el input de crear con lectura
+  const handleCreateDialogChange = React.useCallback((e) => {
+    const newValue = e.target.value;
+    setNewName(newValue);
+
+    // Leer cada carácter o palabra mientras escribe
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Leer la última palabra escrita
+    const words = newValue.trim().split(/\s+/);
+    const lastWord = words[words.length - 1];
+    
+    if (newValue.endsWith(' ') && lastWord && lastWord.length > 1) {
+      speak(lastWord, { rate: 1.5 });
+    }
+
+    // Leer todo después de una pausa
+    typingTimeoutRef.current = setTimeout(() => {
+      if (newValue.trim()) {
+        speak(`Nombre actual: ${newValue}`, { rate: 1.3 });
+      }
+    }, 1500);
+  }, [speak]);
+
+  // Manejar cambios en el input de renombrar con lectura
+  const handleRenameDialogChange = React.useCallback((e) => {
+    const newValue = e.target.value;
+    setNewName(newValue);
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    const words = newValue.trim().split(/\s+/);
+    const lastWord = words[words.length - 1];
+    
+    if (newValue.endsWith(' ') && lastWord && lastWord.length > 1) {
+      speak(lastWord, { rate: 1.5 });
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      if (newValue.trim()) {
+        speak(`Nuevo nombre: ${newValue}`, { rate: 1.3 });
+      }
+    }, 1500);
+  }, [speak]);
+
+   // Efecto para enfocar y anunciar cuando se abre el diálogo de crear
+  React.useEffect(() => {
+    if (dialogOpen) {
+      // Detener navegación en el gestor de archivos
+      stop();
+      
+      // Pequeño delay para que el diálogo se renderice completamente
+      setTimeout(() => {
+        const dialogType = isFile ? 'archivo' : 'carpeta';
+        speak(`Diálogo de crear nuevo ${dialogType}. Ingresa el nombre y presiona Enter para crear o Escape para cancelar. Tab para navegar entre campos y botones`, { rate: 1.2 });
+        
+        if (createDialogInputRef.current) {
+          createDialogInputRef.current.focus();
+        }
+      }, 100);
+    }
+  }, [dialogOpen, isFile, speak, stop]);
+
+  // Efecto para enfocar y anunciar cuando se abre el diálogo de renombrar
+  React.useEffect(() => {
+    if (renameDialogOpen && selectedItem) {
+      stop();
+      
+      setTimeout(() => {
+        const itemType = selectedItem.type === 'folder' ? 'carpeta' : 'archivo';
+        speak(`Diálogo de renombrar ${itemType}. Nombre actual: ${selectedItem.name}. Ingresa el nuevo nombre y presiona Enter para confirmar o Escape para cancelar`, { rate: 1.2 });
+        
+        if (renameDialogInputRef.current) {
+          renameDialogInputRef.current.focus();
+        }
+      }, 100);
+    }
+  }, [renameDialogOpen, selectedItem, speak, stop]);
+
+  // Efecto para anunciar cuando se abre el diálogo de eliminar
+  React.useEffect(() => {
+    if (deleteDialogOpen && selectedItem) {
+      stop();
+      
+      setTimeout(() => {
+        const itemType = selectedItem.type === 'folder' ? 'carpeta' : 'archivo';
+        const message = `Diálogo de confirmación. ¿Estás seguro de eliminar ${itemType} ${selectedItem.name}? ${selectedItem.type === 'folder' ? 'Esto eliminará todos los archivos dentro de la carpeta. ' : ''}Presiona Tab para navegar entre botones. Enter para confirmar o Escape para cancelar`;
+        speak(message, { rate: 1.2 });
+      }, 100);
+    }
+  }, [deleteDialogOpen, selectedItem, speak, stop]);
+
+  // Manejar teclas en diálogo de crear
+  const handleCreateDialogKeyDown = React.useCallback((e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      stop();
+      setDialogOpen(false);
+      setNewName('');
+      speak('Diálogo cancelado');
+    } else if (e.key === 'Backspace' || e.key === 'Delete') {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    }
+  }, [stop, speak]);
+
+  // Manejar teclas en diálogo de renombrar
+  const handleRenameDialogKeyDown = React.useCallback((e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      stop();
+      setRenameDialogOpen(false);
+      setNewName('');
+      speak('Diálogo cancelado');
+    } else if (e.key === 'Backspace' || e.key === 'Delete') {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    }
+  }, [stop, speak]);
+
+  // Efecto para anunciar cuando se abre el diálogo de almacenamiento
+  React.useEffect(() => {
+    if (storageWarningOpen) {
+      stop();
+      
+      setTimeout(() => {
+        speak(`Advertencia de almacenamiento. ${storageWarningMessage}. Presiona Enter o Escape para cerrar`, { rate: 1.2 });
+      }, 100);
+    }
+  }, [storageWarningOpen, storageWarningMessage, speak, stop]);
 
   // Función para renombrar
   const handleRename = React.useCallback(() => {
@@ -322,16 +464,6 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     handleCloseContextMenu();
     speak(`Archivo ${selectedItem.name} descargado correctamente`);
   }, [selectedItem, speak]);
-
-  // Scroll al mensaje enfocado
-  React.useEffect(() => {
-    if (focusedMessageIndex >= 0 && messageRefs.current[focusedMessageIndex] && isKeyboardNavigation) {
-      messageRefs.current[focusedMessageIndex]?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest'
-      });
-    }
-  }, [focusedMessageIndex, isKeyboardNavigation]);
 
   // Detener la lectura cuando el usuario cambia de posición
   React.useEffect(() => {
@@ -535,41 +667,31 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
   const handleChatKeyDown = React.useCallback((e) => {
     if (tabIndex !== 1) return;
 
-    // Detectar si estamos en el input de texto
     const isInTextField = e.target.tagName === 'TEXTAREA' || 
-                         (e.target.tagName === 'INPUT' && e.target.type === 'text');
+                        (e.target.tagName === 'INPUT' && e.target.type === 'text');
 
-    // Si estamos en el input, solo manejar Escape para salir
     if (isInTextField) {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && chatHistory.length > 0) {
         e.preventDefault();
-        setIsKeyboardNavigation(true);
-        if (chatHistory.length > 0) {
-          setFocusedMessageIndex(chatHistory.length - 1);
-          setFocusedCodeButton(null);
-          const lastMessage = chatHistory[chatHistory.length - 1];
-          const role = lastMessage.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
-          speakOnFocus(`Mensaje ${chatHistory.length} de ${chatHistory.length}. ${role}`);
-        }
+        setLastInteractionWasKeyboard(true);
+        setFocusedMessageIndex(chatHistory.length - 1);
+        setFocusedCodeButton(null);
+        const lastMessage = chatHistory[chatHistory.length - 1];
+        const role = lastMessage.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
+        speakOnFocus(`Mensaje ${chatHistory.length} de ${chatHistory.length}. ${role}`);
       }
-      return; // No procesar otras teclas cuando estamos en el input
+      return;
     }
 
-    // Activar navegación por teclado en cualquier tecla de navegación
-    if (['ArrowUp', 'ArrowDown', 'Tab', 'Enter', 'Escape', 'i', 'I'].includes(e.key)) {
-      setIsKeyboardNavigation(true);
-    }
-
-    // Si no hay mensajes, no hacer nada
     if (chatHistory.length === 0 && !['i', 'I'].includes(e.key)) return;
+
+    setLastInteractionWasKeyboard(true);
 
     switch (e.key) {
       case 'i':
       case 'I':
-        // Comando 'i' para ir al input (como en Vim)
         e.preventDefault();
         stop();
-        setIsKeyboardNavigation(false);
         setFocusedMessageIndex(-1);
         setFocusedCodeButton(null);
         if (inputRef.current) {
@@ -607,25 +729,21 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
       case 'Tab':
         e.preventDefault();
         if (focusedMessageIndex >= 0) {
-          // Buscar botones de código en el mensaje actual
           const messageCodeButtons = document.querySelectorAll(
             `[data-message-index="${focusedMessageIndex}"][data-copy-button]`
           );
           
           if (messageCodeButtons.length > 0) {
             if (focusedCodeButton === null) {
-              // Primer botón del mensaje
               setFocusedCodeButton({ messageIndex: focusedMessageIndex, codeIndex: 0 });
               speakOnFocus('Botón copiar código Python. Presiona Enter para copiar');
             } else if (focusedCodeButton.codeIndex < messageCodeButtons.length - 1) {
-              // Siguiente botón
               setFocusedCodeButton({ 
                 messageIndex: focusedMessageIndex, 
                 codeIndex: focusedCodeButton.codeIndex + 1 
               });
               speakOnFocus('Botón copiar código Python. Presiona Enter para copiar');
             } else {
-              // Volver al mensaje
               setFocusedCodeButton(null);
               const message = chatHistory[focusedMessageIndex];
               const role = message.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
@@ -638,7 +756,6 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
       case 'Enter':
         e.preventDefault();
         if (focusedCodeButton !== null) {
-          // Copiar código
           const button = document.querySelector(
             `[data-message-index="${focusedCodeButton.messageIndex}"][data-code-index="${focusedCodeButton.codeIndex}"]`
           );
@@ -647,7 +764,6 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
             speakOnFocus('Código copiado al portapapeles');
           }
         } else if (focusedMessageIndex >= 0) {
-          // Leer el contenido completo del mensaje
           const message = chatHistory[focusedMessageIndex];
           const textContent = message.content
             .replace(/```[\s\S]*?```/g, '. Bloque de código. ')
@@ -660,26 +776,7 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
             .trim();
           
           stop();
-          
-          // Dividir el texto en chunks más pequeños para evitar timeouts
-          const chunks = textContent.match(/[^.!?]+[.!?]+/g) || [textContent];
-          
-          let chunkIndex = 0;
-          const speakNextChunk = () => {
-            if (chunkIndex < chunks.length && window.speechSynthesis.speaking === false) {
-              speak(chunks[chunkIndex], { rate: 1.1 });
-              chunkIndex++;
-              
-              // Esperar a que termine y hablar el siguiente chunk
-              setTimeout(() => {
-                if (chunkIndex < chunks.length) {
-                  speakNextChunk();
-                }
-              }, chunks[chunkIndex - 1].length * 50); // Ajustar delay según longitud
-            }
-          };
-          
-          speakNextChunk();
+          speak(textContent, { rate: 1.1 });
         }
         break;
 
@@ -697,16 +794,24 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
   
   // Manejar foco en mensajes (solo por mouse)
   const handleMessageFocus = React.useCallback((index) => {
+    if (lastInteractionWasKeyboard) return;
+    
     setFocusedMessageIndex(index);
     setFocusedCodeButton(null);
     const message = chatHistory[index];
     const role = message.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
     speakOnHover(`Mensaje ${index + 1} de ${chatHistory.length}. ${role}`, 300);
-  }, [chatHistory, speakOnHover]);
+  }, [chatHistory, speakOnHover, lastInteractionWasKeyboard]);
 
-  // Manejar click en mensaje (desactivar navegación por teclado)
-  const handleMessageClick = React.useCallback((index) => {
-    setIsKeyboardNavigation(false);
+  // Manejar click en mensaje - AJUSTADO
+  const handleMessageClick = React.useCallback((index, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setLastInteractionWasKeyboard(false);
+    setFocusedMessageIndex(index);
+    setFocusedCodeButton(null);
     handleMessageFocus(index);
   }, [handleMessageFocus]);
 
@@ -962,302 +1067,353 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     }));
   };
 
-  const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageFocus, onMessageClick, messageRefs, focusedCodeButton }) => {
-    const chatEndRef = React.useRef(null);
-    const [copiedStates, setCopiedStates] = React.useState({});
+const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageFocus, onMessageClick, messageRefs, focusedCodeButton }) => {
+  const chatEndRef = React.useRef(null);
+  const [copiedStates, setCopiedStates] = React.useState({});
 
-    React.useEffect(() => {
-      if (chatHistory.length > 0) {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const handleCopy = (messageIndex, codeIndex) => {
+    const key = `${messageIndex}-${codeIndex}`;
+    setCopiedStates(prev => ({ ...prev, [key]: true }));
+    setTimeout(() => {
+      setCopiedStates(prev => ({ ...prev, [key]: false }));
+    }, 2000);
+  };
+
+  // Copia robusta vía Clipboard API con fallback
+  const handleCopyAndWrite = async (messageIndex, codeIndex, text) => {
+    try {
+      // Copiar al portapapeles
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback para navegadores antiguos
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          textArea.remove();
+        } catch (err) {
+          console.error('Fallback: Error al copiar', err);
+          textArea.remove();
+          throw err;
+        }
       }
-    }, [chatHistory.length]);
+      
+      // Actualizar estado visual
+      handleCopy(messageIndex, codeIndex);
+      
+      console.log('✓ Código copiado exitosamente');
+    } catch (err) {
+      console.error('Error al copiar al portapapeles:', err);
+    }
+  };
 
-    const handleCopy = (messageIndex, codeIndex) => {
-      const key = `${messageIndex}-${codeIndex}`;
-      setCopiedStates(prev => ({ ...prev, [key]: true }));
-      setTimeout(() => {
-        setCopiedStates(prev => ({ ...prev, [key]: false }));
-      }, 2000);
-    };
+  return (
+    <div>
+      {chatHistory.map((message, messageIndex) => {
+        const content = typeof message.content === 'string' ? message.content : String(message.content || '');
+        const isFocused = focusedMessageIndex === messageIndex && isKeyboardNavigation;
+        let codeBlockIndex = 0;
 
-    return (
-      <div>
-        {chatHistory.map((message, messageIndex) => {
-          const content = typeof message.content === 'string' ? message.content : String(message.content || '');
-          const isFocused = focusedMessageIndex === messageIndex && isKeyboardNavigation;
-          let codeBlockIndex = 0;
-          
-          return (
-            <div 
-              key={messageIndex}
-              ref={el => messageRefs.current[messageIndex] = el}
-              tabIndex={-1}
-              onClick={() => onMessageClick(messageIndex)}
-              onMouseEnter={() => !isKeyboardNavigation && onMessageFocus(messageIndex)}
-              role="article"
-              aria-label={`Mensaje ${messageIndex + 1} de ${chatHistory.length}. ${message.role === "user" ? "Tu mensaje" : "Respuesta del copiloto"}`}
-              style={{ 
-                marginBottom: "16px",
-                padding: '12px',
-                borderRadius: '8px',
-                backgroundColor: isFocused ? themeColors.hover : 'transparent',
-                border: isFocused ? `2px solid ${themeColors.accent}` : '2px solid transparent',
-                outline: 'none',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <Typography style={{ 
-                color: themeColors.text, 
-                fontWeight: 700,
-                marginBottom: "6px",
-                fontSize: '0.95rem'
-              }}>
-                {message.role === "user" ? "Tú" : "Copiloto"}
-              </Typography>
-              <ReactMarkdown
-                children={content}
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  p: ({ node, ...props }) => (
-                    <Typography
-                      {...props}
-                      style={{ 
-                        color: themeColors.text, 
-                        marginBottom: "8px",
-                        lineHeight: "1.5",
-                        fontSize: '0.9rem'
-                      }}
-                    />
-                  ),
-                  h1: ({ node, ...props }) => (
-                    <Typography
-                      {...props}
-                      variant="h5"
-                      style={{ 
-                        color: themeColors.text,
-                        fontWeight: 700,
-                        marginTop: "12px",
-                        marginBottom: "8px"
-                      }}
-                    />
-                  ),
-                  h2: ({ node, ...props }) => (
-                    <Typography
-                      {...props}
-                      variant="h6"
-                      style={{ 
-                        color: themeColors.text,
-                        fontWeight: 600,
-                        marginTop: "10px",
-                        marginBottom: "6px"
-                      }}
-                    />
-                  ),
-                  h3: ({ node, ...props }) => (
-                    <Typography
-                      {...props}
-                      variant="subtitle1"
-                      style={{ 
-                        color: themeColors.accent,
-                        fontWeight: 600,
-                        marginTop: "8px",
-                        marginBottom: "4px"
-                      }}
-                    />
-                  ),
-                  ul: ({ node, ...props }) => (
-                    <ul
-                      {...props}
-                      style={{
-                        color: themeColors.text,
-                        marginTop: "4px",
-                        marginBottom: "8px",
-                        paddingLeft: "20px",
-                        listStyleType: 'disc'
-                      }}
-                    />
-                  ),
-                  ol: ({ node, ...props }) => (
-                    <ol
-                      {...props}
-                      style={{
-                        color: themeColors.text,
-                        marginTop: "4px",
-                        marginBottom: "8px",
-                        paddingLeft: "20px"
-                      }}
-                    />
-                  ),
-                  li: ({ node, ...props }) => (
-                    <li
-                      {...props}
-                      style={{
-                        color: themeColors.text,
-                        marginBottom: "4px",
-                        lineHeight: "1.5"
-                      }}
-                    />
-                  ),
-                  strong: ({ node, ...props }) => (
-                    <strong
-                      {...props}
-                      style={{
-                        color: themeColors.accent,
-                        fontWeight: 700
-                      }}
-                    />
-                  ),
-                  em: ({ node, ...props }) => (
-                    <em
-                      {...props}
-                      style={{
-                        color: themeColors.textSecondary,
-                        fontStyle: 'italic'
-                      }}
-                    />
-                  ),
-                  code: ({ node, inline, className, children, ...props }) => {
-                    const isPython = className === 'language-python';
-                    
-                    if (inline) {
-                      return (
-                        <code 
-                          {...props} 
-                          style={{ 
-                            backgroundColor: themeColors.surface,
-                            color: themeColors.accent,
-                            padding: '1px 4px',
-                            borderRadius: '3px',
-                            fontSize: '0.85em',
-                            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-                            border: `1px solid ${themeColors.border}`,
-                            fontWeight: 500
+        return (
+          <div
+            key={messageIndex}
+            ref={el => (messageRefs.current[messageIndex] = el)}
+            tabIndex={focusedMessageIndex === messageIndex ? 0 : -1}
+            onClick={() => onMessageClick(messageIndex)}
+            onMouseEnter={() => onMessageFocus(messageIndex)}
+            onMouseDown={(e) => e.preventDefault()} 
+            onFocus={() => onMessageFocus(messageIndex)}
+            role="article"
+            aria-label={`Mensaje ${messageIndex + 1} de ${chatHistory.length}. ${message.role === "user" ? "Tu mensaje" : "Respuesta del copiloto"}`}
+            style={{
+              marginBottom: "16px",
+              padding: '12px',
+              borderRadius: '8px',
+              backgroundColor: isFocused ? themeColors.hover : 'transparent',
+              border: isFocused ? `2px solid ${themeColors.accent}` : '2px solid transparent',
+              outline: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              position: 'relative'
+            }}
+          >
+            <Typography style={{
+              color: themeColors.text,
+              fontWeight: 700,
+              marginBottom: "6px",
+              fontSize: '0.95rem'
+            }}>
+              {message.role === "user" ? "Tú" : "Copiloto"}
+            </Typography>
+            <ReactMarkdown
+              children={content}
+              remarkPlugins={[remarkGfm]}
+              components={{
+                p: ({ node, ...props }) => (
+                  <Typography
+                    {...props}
+                    style={{
+                      color: themeColors.text,
+                      marginBottom: "8px",
+                      lineHeight: "1.5",
+                      fontSize: '0.9rem'
+                    }}
+                  />
+                ),
+                h1: ({ node, ...props }) => (
+                  <Typography
+                    {...props}
+                    variant="h5"
+                    style={{
+                      color: themeColors.text,
+                      fontWeight: 700,
+                      marginTop: "12px",
+                      marginBottom: "8px"
+                    }}
+                  />
+                ),
+                h2: ({ node, ...props }) => (
+                  <Typography
+                    {...props}
+                    variant="h6"
+                    style={{
+                      color: themeColors.text,
+                      fontWeight: 600,
+                      marginTop: "10px",
+                      marginBottom: "6px"
+                    }}
+                  />
+                ),
+                h3: ({ node, ...props }) => (
+                  <Typography
+                    {...props}
+                    variant="subtitle1"
+                    style={{
+                      color: themeColors.accent,
+                      fontWeight: 600,
+                      marginTop: "8px",
+                      marginBottom: "4px"
+                    }}
+                  />
+                ),
+                ul: ({ node, ...props }) => (
+                  <ul
+                    {...props}
+                    style={{
+                      color: themeColors.text,
+                      marginTop: "4px",
+                      marginBottom: "8px",
+                      paddingLeft: "20px",
+                      listStyleType: 'disc'
+                    }}
+                  />
+                ),
+                ol: ({ node, ...props }) => (
+                  <ol
+                    {...props}
+                    style={{
+                      color: themeColors.text,
+                      marginTop: "4px",
+                      marginBottom: "8px",
+                      paddingLeft: "20px"
+                    }}
+                  />
+                ),
+                li: ({ node, ...props }) => (
+                  <li
+                    {...props}
+                    style={{
+                      color: themeColors.text,
+                      marginBottom: "4px",
+                      lineHeight: "1.5"
+                    }}
+                  />
+                ),
+                strong: ({ node, ...props }) => (
+                  <strong
+                    {...props}
+                    style={{
+                      color: themeColors.accent,
+                      fontWeight: 700
+                    }}
+                  />
+                ),
+                em: ({ node, ...props }) => (
+                  <em
+                    {...props}
+                    style={{
+                      color: themeColors.textSecondary,
+                      fontStyle: 'italic'
+                    }}
+                  />
+                ),
+                code: ({ node, inline, className, children, ...props }) => {
+                  const isPython = className === 'language-python';
+
+                  if (inline) {
+                    return (
+                      <code
+                        {...props}
+                        style={{
+                          backgroundColor: themeColors.surface,
+                          color: themeColors.accent,
+                          padding: '1px 4px',
+                          borderRadius: '3px',
+                          fontSize: '0.85em',
+                          fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                          border: `1px solid ${themeColors.border}`,
+                          fontWeight: 500
+                        }}
+                      >
+                        {children}
+                      </code>
+                    );
+                  }
+
+                  const currentCodeIndex = codeBlockIndex++;
+                  const copyKey = `${messageIndex}-${currentCodeIndex}`;
+                  const copied = copiedStates[copyKey] || false;
+                  const isButtonFocused =
+                    focusedCodeButton?.messageIndex === messageIndex &&
+                    focusedCodeButton?.codeIndex === currentCodeIndex;
+
+                  return (
+                    <div style={{
+                      position: "relative",
+                      marginTop: isPython ? "28px" : "8px",
+                      marginBottom: "12px"
+                    }}>
+                      {isPython && (
+                        <Button
+                          variant="contained"
+                          size="small"
+                          // Hacer el botón navegable por teclado
+                          tabIndex={0}
+                          type="button"
+                          data-message-index={messageIndex}
+                          data-code-index={currentCodeIndex}
+                          data-copy-button="true"
+                          aria-label={`Copiar código Python. ${copied ? 'Código copiado' : 'Presiona Enter para copiar'}`}
+                          onMouseEnter={() => !isKeyboardNavigation && speakOnHover(`Botón copiar código Python. ${copied ? 'Código copiado' : 'Click para copiar'}`)}
+                          onMouseLeave={cancelHoverSpeak}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            handleCopyAndWrite(messageIndex, currentCodeIndex, String(children))
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              handleCopyAndWrite(messageIndex, currentCodeIndex, String(children));
+                            }
+                          }}
+                          sx={{
+                            position: "absolute",
+                            top: -24,
+                            right: 8,
+                            backgroundColor: copied ? themeColors.success : themeColors.accent,
+                            color:
+                              themeColors.background === '#000000' ||
+                              themeColors.background === '#0d1117'
+                                ? '#000000'
+                                : '#ffffff',
+                            fontWeight: 600,
+                            fontSize: '0.7rem',
+                            minWidth: '60px',
+                            height: '24px',
+                            padding: '2px 8px',
+                            textTransform: 'none',
+                            zIndex: 10,
+                            transition: 'all 0.3s ease',
+                            outline: isButtonFocused ? `3px solid ${themeColors.accent}` : 'none',
+                            outlineOffset: '2px',
+                            '&:hover': {
+                              backgroundColor: copied ? themeColors.success : themeColors.accent,
+                              filter: 'brightness(0.85)'
+                            },
+                            '&:focus': {
+                              outline: `2px solid ${themeColors.accent}`,
+                              outlineOffset: '2px'
+                            }
+                          }}
+                        >
+                          {copied ? '✓ Copiado' : 'Copiar'}
+                        </Button>
+                      )}
+                      <pre style={{
+                        whiteSpace: "pre-wrap",
+                        wordWrap: "break-word",
+                        backgroundColor: themeColors.surface,
+                        padding: '10px',
+                        borderRadius: '4px',
+                        border: `1px solid ${themeColors.border}`,
+                        margin: 0,
+                        // Quitar scroll interno en cada bloque
+                        overflow: 'visible',
+                        // Permitir lectura cómoda, sin límite de altura interno
+                        maxHeight: 'none',
+                        fontSize: '0.85rem',
+                        lineHeight: '1.4'
+                      }}>
+                        <code
+                          {...props}
+                          style={{
+                            color: themeColors.text,
+                            fontFamily: 'Consolas, Monaco, "Courier New", monospace'
                           }}
                         >
                           {children}
                         </code>
-                      );
-                    }
-
-                    const currentCodeIndex = codeBlockIndex++;
-                    const copyKey = `${messageIndex}-${currentCodeIndex}`;
-                    const copied = copiedStates[copyKey] || false;
-                    const isButtonFocused = focusedCodeButton?.messageIndex === messageIndex && 
-                                          focusedCodeButton?.codeIndex === currentCodeIndex;
-
-                    return (
-                      <div style={{ 
-                        position: "relative",
-                        marginTop: isPython ? "28px" : "8px",
-                        marginBottom: "12px"
-                      }}>
-                        {isPython && (
-                          <CopyToClipboard 
-                            text={String(children)} 
-                            onCopy={() => handleCopy(messageIndex, currentCodeIndex)}
-                          >
-                            <Button
-                              variant="contained"
-                              size="small"
-                              tabIndex={-1}
-                              data-message-index={messageIndex}
-                              data-code-index={currentCodeIndex}
-                              data-copy-button="true"
-                              aria-label={`Copiar código Python. ${copied ? 'Código copiado' : 'Presiona Enter para copiar'}`}
-                              onMouseEnter={() => !isKeyboardNavigation && speakOnHover(`Botón copiar código Python. ${copied ? 'Código copiado' : 'Click para copiar'}`)}
-                              onMouseLeave={cancelHoverSpeak}
-                              sx={{
-                                position: "absolute",
-                                top: -24,
-                                right: 8,
-                                backgroundColor: copied ? themeColors.success : themeColors.accent,
-                                color: themeColors.background === '#000000' || 
-                                      themeColors.background === '#0d1117' 
-                                  ? '#000000' 
-                                  : '#ffffff',
-                                fontWeight: 600,
-                                fontSize: '0.7rem',
-                                minWidth: '60px',
-                                height: '24px',
-                                padding: '2px 8px',
-                                textTransform: 'none',
-                                zIndex: 10,
-                                transition: 'all 0.3s ease',
-                                outline: isButtonFocused ? `3px solid ${themeColors.accent}` : 'none',
-                                outlineOffset: '2px',
-                                '&:hover': {
-                                  backgroundColor: copied ? themeColors.success : themeColors.accent,
-                                  filter: 'brightness(0.85)'
-                                },
-                                '&:focus': {
-                                  outline: `2px solid ${themeColors.accent}`,
-                                  outlineOffset: '2px'
-                                }
-                              }}
-                            >
-                              {copied ? '✓ Copiado' : 'Copiar'}
-                            </Button>
-                          </CopyToClipboard>
-                        )}
-                        <pre style={{ 
-                          whiteSpace: "pre-wrap", 
-                          wordWrap: "break-word",
-                          backgroundColor: themeColors.surface,
-                          padding: '10px',
-                          borderRadius: '4px',
-                          border: `1px solid ${themeColors.border}`,
-                          margin: 0,
-                          overflow: 'auto',
-                          maxHeight: '350px',
-                          fontSize: '0.85rem',
-                          lineHeight: '1.4'
-                        }}>
-                          <code {...props} style={{ 
-                            color: themeColors.text,
-                            fontFamily: 'Consolas, Monaco, "Courier New", monospace'
-                          }}>
-                            {children}
-                          </code>
-                        </pre>
-                      </div>
-                    );
-                  },
-                  blockquote: ({ node, ...props }) => (
-                    <blockquote
-                      {...props}
-                      style={{
-                        borderLeft: `3px solid ${themeColors.accent}`,
-                        paddingLeft: '12px',
-                        marginLeft: 0,
-                        marginTop: '8px',
-                        marginBottom: '8px',
-                        color: themeColors.textSecondary,
-                        fontStyle: 'italic'
-                      }}
-                    />
-                  ),
-                  a: ({ node, ...props }) => (
-                    <a
-                      {...props}
-                      style={{
-                        color: themeColors.accent,
-                        textDecoration: 'underline',
-                        cursor: 'pointer'
-                      }}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    />
-                  ),
-                }}
-              />
-            </div>
-          );
-        })}
-        <div ref={chatEndRef} />
-      </div>
-    );
-  };
+                      </pre>
+                    </div>
+                  );
+                },
+                blockquote: ({ node, ...props }) => (
+                  <blockquote
+                    {...props}
+                    style={{
+                      borderLeft: `3px solid ${themeColors.accent}`,
+                      paddingLeft: '12px',
+                      marginLeft: 0,
+                      marginTop: '8px',
+                      marginBottom: '8px',
+                      color: themeColors.textSecondary,
+                      fontStyle: 'italic'
+                    }}
+                  />
+                ),
+                a: ({ node, ...props }) => (
+                  <a
+                    {...props}
+                    style={{
+                      color: themeColors.accent,
+                      textDecoration: 'underline',
+                      cursor: 'pointer'
+                    }}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  />
+                ),
+              }}
+            />
+          </div>
+        );
+      })}
+      <div ref={chatEndRef} />
+    </div>
+  );
+};
   
   const handleTabChange = (event, newIndex) => {
     setTabIndex(newIndex);
@@ -1301,14 +1457,6 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     }
   };
 
-  // Enfocar automáticamente en el último mensaje cuando se agrega uno nuevo
-  React.useEffect(() => {
-    if (chatHistory.length > 0 && tabIndex === 1 && isKeyboardNavigation) {
-      setFocusedMessageIndex(chatHistory.length - 1);
-      setFocusedCodeButton(null);
-    }
-  }, [chatHistory.length, tabIndex, isKeyboardNavigation]);
-
   // Anunciar elemento enfocado
   React.useEffect(() => {
     if (collapsed || tabIndex === 1) return;
@@ -1345,7 +1493,7 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
   // Resetear navegación por teclado al cambiar de tab
   React.useEffect(() => {
     if (tabIndex !== 1) {
-      setIsKeyboardNavigation(false);
+      setLastInteractionWasKeyboard(false);
       setFocusedMessageIndex(-1);
       setFocusedCodeButton(null);
     }
@@ -1427,8 +1575,8 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
   return (
     <Box 
       ref={fileManagerContainerRef}
-      tabIndex={0}
-      onKeyDown={tabIndex === 1 ? handleChatKeyDown : handleKeyDown}
+      tabIndex={dialogOpen || renameDialogOpen || deleteDialogOpen || storageWarningOpen ? -1 : 0}
+      onKeyDown={dialogOpen || renameDialogOpen || deleteDialogOpen || storageWarningOpen ? undefined : (tabIndex === 1 ? handleChatKeyDown : handleKeyDown)}
       onFocus={() => {
         setIsFileManagerFocused(true);
         setFocusedComponent('filemanager');
@@ -1587,7 +1735,7 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
                       <strong>Navegación por teclado:</strong><br/>
                       • <strong>i</strong> - Ir al campo de entrada para escribir<br/>
                       • <strong>↑/↓</strong> - Navegar entre mensajes<br/>
-                      • <strong>Enter</strong> - Leer mensaje completo<br/>
+                      • <strong>Enter</strong> - Leer mensaje completo o copiar código<br/>
                       • <strong>Tab</strong> - Ir a botones de código<br/>
                       • <strong>Esc</strong> - Detener lectura / Volver a mensajes desde input
                     </Typography>
@@ -1639,20 +1787,17 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
                 <TextField
                   inputRef={inputRef}
                   value={prompt}
-                  onChange={handlePromptChange} // Usar la nueva función
+                  onChange={handlePromptChange}
                   onKeyDown={(e) => {
-                    // Solo manejar Enter, permitir espacio normal
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
                       
-                      // Limpiar el timeout de typing si existe
                       if (typingTimeoutRef.current) {
                         clearTimeout(typingTimeoutRef.current);
                       }
                       
                       handleGenerateCode();
                     } else if (e.key === 'Backspace' || e.key === 'Delete') {
-                      // Detener lectura al borrar
                       if (typingTimeoutRef.current) {
                         clearTimeout(typingTimeoutRef.current);
                       }
@@ -1665,10 +1810,8 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
                     setFocusedCodeButton(null);
                     setLastTypedWord('');
                     
-                    // Leer instrucción inicial
                     speakOnFocus('Campo de texto para hacer preguntas al copiloto. Presiona Enter para enviar o Shift más Enter para nueva línea. Esc para volver a navegar mensajes. Presiona i desde cualquier lugar para volver aquí');
                     
-                    // Si hay texto en el campo, leerlo después de la instrucción
                     if (prompt.trim()) {
                       setTimeout(() => {
                         speak(`Texto actual: ${prompt}`, { rate: 1.3 });
@@ -1676,7 +1819,6 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
                     }
                   }}
                   onBlur={() => {
-                    // Detener lectura al salir del campo
                     if (typingTimeoutRef.current) {
                       clearTimeout(typingTimeoutRef.current);
                     }
@@ -2684,8 +2826,15 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
       {/* Dialog para crear */}
       <Dialog 
         open={dialogOpen} 
-        onClose={() => setDialogOpen(false)}
+        onClose={() => {
+          stop();
+          setDialogOpen(false);
+          setNewName('');
+          speak('Diálogo cerrado');
+        }}
         aria-labelledby="dialog-title"
+        aria-describedby="dialog-description"
+        disableRestoreFocus
         PaperProps={{
           sx: {
             backgroundColor: themeColors.surface,
@@ -2694,26 +2843,50 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
           }
         }}
       >
-        <DialogTitle id="dialog-title" sx={{ color: themeColors.text }}>
+        <DialogTitle 
+          id="dialog-title" 
+          sx={{ color: themeColors.text }}
+          tabIndex={-1}
+        >
           {isFile ? 'Crear Nuevo Archivo' : 'Crear Nueva Carpeta'}
         </DialogTitle>
         <DialogContent>
-          <DialogContentText sx={{ color: themeColors.textSecondary }}>
+          <DialogContentText 
+            id="dialog-description"
+            sx={{ color: themeColors.textSecondary }}
+            tabIndex={-1}
+          >
             Ingresa el nombre para {isFile ? 'el archivo' : 'la carpeta'}:
           </DialogContentText>
           <TextField
-            autoFocus
+            inputRef={createDialogInputRef}
             margin="dense"
             label="Nombre"
             fullWidth
             variant="outlined"
             value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyPress={(e) => {
+            onChange={handleCreateDialogChange}
+            onKeyDown={(e) => {
+              handleCreateDialogKeyDown(e);
               if (e.key === 'Enter') {
+                e.preventDefault();
+                if (typingTimeoutRef.current) {
+                  clearTimeout(typingTimeoutRef.current);
+                }
                 handleDialogConfirm();
               }
             }}
+            onFocus={() => {
+              const dialogType = isFile ? 'archivo' : 'carpeta';
+              speakOnFocus(`Campo de nombre para ${dialogType}. ${newName ? `Nombre actual: ${newName}` : 'Campo vacío'}. Escribe el nombre y presiona Enter para crear`);
+            }}
+            onBlur={() => {
+              if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+              }
+            }}
+            aria-label={`Nombre del ${isFile ? 'archivo' : 'carpeta'}`}
+            aria-describedby="dialog-description"
             sx={{
               '& .MuiOutlinedInput-root': {
                 color: themeColors.text,
@@ -2738,20 +2911,41 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
         </DialogContent>
         <DialogActions>
           <Button 
-            onClick={() => setDialogOpen(false)} 
+            onClick={() => {
+              stop();
+              setDialogOpen(false);
+              setNewName('');
+              speak('Diálogo cancelado');
+            }}
+            onFocus={() => speakOnFocus('Botón cancelar. Presiona Enter para cerrar el diálogo sin crear')}
+            onMouseEnter={() => speakOnHover('Cancelar')}
+            onMouseLeave={cancelHoverSpeak}
             sx={{ color: themeColors.textSecondary }}
           >
             Cancelar
           </Button>
           <Button 
-            onClick={handleDialogConfirm} 
+            onClick={() => {
+              if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+              }
+              handleDialogConfirm();
+            }}
+            onFocus={() => speakOnFocus(`Botón crear ${isFile ? 'archivo' : 'carpeta'}. Presiona Enter para confirmar`)}
+            onMouseEnter={() => speakOnHover('Crear')}
+            onMouseLeave={cancelHoverSpeak}
             variant="contained"
+            disabled={!newName.trim()}
             sx={{
               backgroundColor: themeColors.accent,
               color: themeColors.background,
               '&:hover': {
                 backgroundColor: themeColors.accent,
                 filter: 'brightness(0.9)'
+              },
+              '&.Mui-disabled': {
+                backgroundColor: themeColors.textSecondary,
+                opacity: 0.5
               }
             }}
           >
@@ -2763,8 +2957,15 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
       {/* Dialog para renombrar */}
       <Dialog 
         open={renameDialogOpen} 
-        onClose={() => setRenameDialogOpen(false)}
+        onClose={() => {
+          stop();
+          setRenameDialogOpen(false);
+          setNewName('');
+          speak('Diálogo cerrado');
+        }}
         aria-labelledby="rename-dialog-title"
+        aria-describedby="rename-dialog-description"
+        disableRestoreFocus
         PaperProps={{
           sx: {
             backgroundColor: themeColors.surface,
@@ -2773,23 +2974,49 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
           }
         }}
       >
-        <DialogTitle id="rename-dialog-title" sx={{ color: themeColors.text }}>
+        <DialogTitle 
+          id="rename-dialog-title" 
+          sx={{ color: themeColors.text }}
+          tabIndex={-1}
+        >
           Renombrar {selectedItem?.type === 'folder' ? 'Carpeta' : 'Archivo'}
         </DialogTitle>
         <DialogContent>
+          <DialogContentText 
+            id="rename-dialog-description"
+            sx={{ color: themeColors.textSecondary, mb: 1 }}
+            tabIndex={-1}
+          >
+            Nombre actual: <strong>{selectedItem?.name}</strong>
+          </DialogContentText>
           <TextField
-            autoFocus
+            inputRef={renameDialogInputRef}
             margin="dense"
             label="Nuevo nombre"
             fullWidth
             variant="outlined"
             value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyPress={(e) => {
+            onChange={handleRenameDialogChange}
+            onKeyDown={(e) => {
+              handleRenameDialogKeyDown(e);
               if (e.key === 'Enter') {
+                e.preventDefault();
+                if (typingTimeoutRef.current) {
+                  clearTimeout(typingTimeoutRef.current);
+                }
                 confirmRename();
               }
             }}
+            onFocus={() => {
+              speakOnFocus(`Campo de nuevo nombre. Nombre actual: ${newName}. Escribe el nuevo nombre y presiona Enter para confirmar`);
+            }}
+            onBlur={() => {
+              if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+              }
+            }}
+            aria-label="Nuevo nombre"
+            aria-describedby="rename-dialog-description"
             sx={{
               '& .MuiOutlinedInput-root': {
                 color: themeColors.text,
@@ -2813,17 +3040,45 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRenameDialogOpen(false)} sx={{ color: themeColors.textSecondary }}>
+          <Button 
+            onClick={() => {
+              stop();
+              setRenameDialogOpen(false);
+              setNewName('');
+              speak('Diálogo cancelado');
+            }}
+            onFocus={() => speakOnFocus('Botón cancelar. Presiona Enter para cerrar sin renombrar')}
+            onMouseEnter={() => speakOnHover('Cancelar')}
+            onMouseLeave={cancelHoverSpeak}
+            sx={{ color: themeColors.textSecondary }}
+          >
             Cancelar
           </Button>
-          <Button onClick={confirmRename} variant="contained" sx={{
+          <Button 
+            onClick={() => {
+              if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+              }
+              confirmRename();
+            }}
+            onFocus={() => speakOnFocus('Botón renombrar. Presiona Enter para confirmar el nuevo nombre')}
+            onMouseEnter={() => speakOnHover('Renombrar')}
+            onMouseLeave={cancelHoverSpeak}
+            variant="contained"
+            disabled={!newName.trim()}
+            sx={{
               backgroundColor: themeColors.accent,
               color: themeColors.background,
               '&:hover': {
                 backgroundColor: themeColors.accent,
                 filter: 'brightness(0.9)'
+              },
+              '&.Mui-disabled': {
+                backgroundColor: themeColors.textSecondary,
+                opacity: 0.5
               }
-            }}>
+            }}
+          >
             Renombrar
           </Button>
         </DialogActions>
@@ -2832,8 +3087,14 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
       {/* Dialog para confirmar eliminación */}
       <Dialog 
         open={deleteDialogOpen} 
-        onClose={() => setDeleteDialogOpen(false)}
+        onClose={() => {
+          stop();
+          setDeleteDialogOpen(false);
+          speak('Diálogo cerrado');
+        }}
         aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+        disableRestoreFocus
         PaperProps={{
           sx: {
             backgroundColor: themeColors.surface,
@@ -2842,21 +3103,45 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
           }
         }}
       >
-        <DialogTitle id="delete-dialog-title" sx={{ color: themeColors.text }}>
+        <DialogTitle 
+          id="delete-dialog-title" 
+          sx={{ color: themeColors.text }}
+          tabIndex={-1}
+        >
           Confirmar Eliminación
         </DialogTitle>
         <DialogContent>
-          <DialogContentText sx={{ color: themeColors.textSecondary }}>
-            ¿Estás seguro de que deseas eliminar {selectedItem?.type === 'folder' ? 'la carpeta' : 'el archivo'} "{selectedItem?.name}"?
+          <DialogContentText 
+            id="delete-dialog-description"
+            sx={{ color: themeColors.textSecondary }}
+            tabIndex={-1}
+          >
+            ¿Estás seguro de que deseas eliminar {selectedItem?.type === 'folder' ? 'la carpeta' : 'el archivo'} "<strong>{selectedItem?.name}</strong>"?
             {selectedItem?.type === 'folder' && ' Esto eliminará todos los archivos dentro de la carpeta.'}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)} sx={{ color: themeColors.textSecondary }}>
+          <Button 
+            onClick={() => {
+              stop();
+              setDeleteDialogOpen(false);
+              speak('Eliminación cancelada');
+            }}
+            onFocus={() => speakOnFocus('Botón cancelar. Presiona Enter para cerrar sin eliminar')}
+            onMouseEnter={() => speakOnHover('Cancelar')}
+            onMouseLeave={cancelHoverSpeak}
+            autoFocus
+            sx={{ color: themeColors.textSecondary }}
+          >
             Cancelar
           </Button>
           <Button 
-            onClick={confirmDelete} 
+            onClick={() => {
+              confirmDelete();
+            }}
+            onFocus={() => speakOnFocus(`Botón eliminar ${selectedItem?.type === 'folder' ? 'carpeta' : 'archivo'}. Presiona Enter para confirmar la eliminación. Esta acción no se puede deshacer`)}
+            onMouseEnter={() => speakOnHover('Eliminar')}
+            onMouseLeave={cancelHoverSpeak}
             variant="contained" 
             sx={{ 
               backgroundColor: themeColors.error,
@@ -2874,8 +3159,14 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
       {/* Dialog de advertencia de almacenamiento */}
       <Dialog 
         open={storageWarningOpen} 
-        onClose={() => setStorageWarningOpen(false)}
+        onClose={() => {
+          stop();
+          setStorageWarningOpen(false);
+          speak('Advertencia cerrada');
+        }}
         aria-labelledby="storage-warning-title"
+        aria-describedby="storage-warning-description"
+        disableRestoreFocus
         PaperProps={{
           sx: {
             backgroundColor: themeColors.surface,
@@ -2884,19 +3175,35 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
           }
         }}
       >
-        <DialogTitle id="storage-warning-title" sx={{ color: themeColors.warning, display: 'flex', alignItems: 'center' }}>
+        <DialogTitle 
+          id="storage-warning-title" 
+          sx={{ color: themeColors.warning, display: 'flex', alignItems: 'center' }}
+          tabIndex={-1}
+        >
           <WarningIcon sx={{ mr: 1 }} />
           Límite de Almacenamiento
         </DialogTitle>
         <DialogContent>
-          <DialogContentText sx={{ color: themeColors.text }}>
+          <DialogContentText 
+            id="storage-warning-description"
+            sx={{ color: themeColors.text }}
+            tabIndex={-1}
+          >
             {storageWarningMessage}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button 
-            onClick={() => setStorageWarningOpen(false)} 
+            onClick={() => {
+              stop();
+              setStorageWarningOpen(false);
+              speak('Advertencia cerrada');
+            }}
+            onFocus={() => speakOnFocus('Botón entendido. Presiona Enter para cerrar la advertencia')}
+            onMouseEnter={() => speakOnHover('Entendido')}
+            onMouseLeave={cancelHoverSpeak}
             variant="contained"
+            autoFocus
             sx={{ 
               backgroundColor: themeColors.accent,
               '&:hover': {

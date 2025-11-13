@@ -1,70 +1,147 @@
-# Getting Started with Create React App
+# IDE Accesible Codeflow - Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Un entorno de desarrollo integrado (IDE) accesible diseñado para personas con discapacidad visual, construido con React.
 
-## Available Scripts
+## Descripción
 
-In the project directory, you can run:
+Este proyecto es un IDE web accesible que proporciona herramientas de desarrollo adaptadas para usuarios con diferentes necesidades de accesibilidad. Incluye características como lector de pantalla, magnificación, alto contraste, navegación por voz y más.
+
+## Características Principales
+
+- **Editor de Código**: Editor de texto completo con resaltado de sintaxis
+- **Gestor de Archivos**: Navegación y gestión de archivos del proyecto
+- **Terminal Integrada**: Ejecuta comandos directamente desde el IDE
+- **Depurador WebSocket**: Herramientas de debugging en tiempo real
+- **Lector de Pantalla**: Soporte nativo para lectores de pantalla
+- **Magnificador**: Herramienta de zoom para ampliar áreas específicas
+- **Ajustes de Contraste**: Múltiples temas de alto contraste
+- **Control de Zoom**: Ajuste del tamaño de fuente y elementos
+- **Modo de Interacción**: Navegación por teclado y voz
+
+## Instalación
+
+### Prerequisitos
+
+- Node.js (versión 14 o superior)
+- npm o yarn
+
+### Pasos de Instalación
+
+1. Clona el repositorio:
+```bash
+git clone <url-del-repositorio>
+cd frontend
+```
+
+2. Instala las dependencias:
+```bash
+npm install
+```
+
+3. Configura las variables de entorno (opcional):
+Crea un archivo `.env` en la raíz del proyecto con las configuraciones necesarias.
+
+4. Inicia el servidor de desarrollo:
+```bash
+npm start
+```
+
+La aplicación estará disponible en [http://localhost:3000](http://localhost:3000)
+
+## Scripts Disponibles
 
 ### `npm start`
-
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
-
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+Ejecuta la aplicación en modo desarrollo.
 
 ### `npm test`
-
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Ejecuta las pruebas unitarias.
 
 ### `npm run build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Crea una versión optimizada para producción en la carpeta `build`.
 
 ### `npm run eject`
+**Nota**: Esta es una operación irreversible. Expone todas las configuraciones de Create React App.
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## Pruebas
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+El proyecto incluye pruebas E2E con Cypress:
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```bash
+npx cypress open
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+Las pruebas de accesibilidad se encuentran en `cypress/e2e/Accesibilidad.cy.js`.
 
-## Learn More
+## Estructura del Proyecto
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```
+frontend/
+├── src/
+│   ├── components/          # Componentes reutilizables
+│   │   ├── AppearanceModal.jsx
+│   │   ├── Breadcrumbs.jsx
+│   │   ├── Contrast.jsx
+│   │   ├── Debug.jsx
+│   │   ├── FileManager.jsx
+│   │   ├── Magnifier.jsx
+│   │   ├── Navbar.jsx
+│   │   ├── Terminal.jsx
+│   │   ├── TerminalTabs.jsx
+│   │   ├── TextEditor.jsx
+│   │   ├── Welcome.jsx
+│   │   └── Zoom.jsx
+│   ├── contexts/            # Contextos de React
+│   │   ├── InteractionModeContext.js
+│   │   ├── NavigationContext.js
+│   │   └── ScreenReaderContext.js
+│   ├── hooks/               # Custom hooks
+│   │   └── useDebuggerWebSocket.js
+│   ├── pages/               # Páginas principales
+│   │   └── IDE.jsx
+│   ├── styles/              # Archivos CSS
+│   ├── utils/               # Utilidades
+│   │   ├── axiosInstance.js
+│   │   ├── chat.js
+│   │   └── speech.js
+│   └── App.js               # Componente principal
+├── cypress/                 # Pruebas E2E
+│   └── e2e/
+│       └── Accesibilidad.cy.js
+└── public/                  # Archivos estáticos
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Características de Accesibilidad
 
-### Code Splitting
+### Navegación por Teclado
+- Atajos de teclado personalizables
+- Focus visible en todos los elementos interactivos
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+### Soporte para Lectores de Pantalla
+- Etiquetas ARIA apropiadas
+- Anuncios de cambios de estado
+- Descripción de elementos interactivos
 
-### Analyzing the Bundle Size
+### Personalización Visual
+- Temas de alto contraste
+- Ajuste de tamaño de fuente
+- Magnificador de pantalla
+- Espaciado configurable
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## Tecnologías Utilizadas
 
-### Making a Progressive Web App
+- **React**: Biblioteca principal de UI
+- **Create React App**: Configuración base del proyecto
+- **Axios**: Cliente HTTP para llamadas a API
+- **WebSocket**: Comunicación en tiempo real
+- **Cypress**: Framework de testing E2E
+- **React Context API**: Gestión de estado global
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
 
-### Advanced Configuration
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## Autores
 
-### Deployment
+- Universidad del Valle - Proyecto de Grado
+- Estudiante Diana Marcela Cadena Moreno
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Para preguntas o sugerencias, por favor abre un issue en el repositorio.
+Este es un proyecto académico desarrollado como Trabajo de Grado en la Universidad del Valle.

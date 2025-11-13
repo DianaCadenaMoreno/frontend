@@ -227,7 +227,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     setCurrentLine(position.lineNumber);
     setCurrentColumn(position.column);
     
-    // Solo anunciar cambios significativos (navegación entre líneas)
+    // Solo anunciar cambios de línea (no cada movimiento de columna)
     if (Math.abs(position.lineNumber - currentLine) >= 1) {
       const lineContent = model.getLineContent(position.lineNumber);
       announce(`Línea ${position.lineNumber}`);
@@ -434,6 +434,35 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     setCurrentColumn(position.column);
   }, [speak]);
 
+  const readSelectionOrLine = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    const model = editorRef.current.getModel();
+    const selection = editorRef.current.getSelection();
+    
+    if (!model || !selection) return;
+    
+    // Si hay texto seleccionado
+    if (!selection.isEmpty()) {
+      const selectedText = model.getValueInRange(selection);
+      
+      if (selectedText.trim()) {
+        // Si la selección es de múltiples líneas
+        const lineCount = selection.endLineNumber - selection.startLineNumber + 1;
+        if (lineCount > 1) {
+          speak(`Selección de ${lineCount} líneas: ${selectedText}`);
+        } else {
+          speak(`Texto seleccionado: ${selectedText}`);
+        }
+      } else {
+        speak('Selección vacía');
+      }
+    } else {
+      // Si no hay selección, leer la línea actual
+      readCurrentLine();
+    }
+  }, [speak, readCurrentLine]);
+
   // Función para leer palabra bajo el cursor
   const readWordAtCursor = useCallback(() => {
     if (!editorRef.current) return;
@@ -499,7 +528,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     speak(`Cursor en línea ${position.lineNumber}, columna ${position.column}`);
   }, [speak]);
 
-   // Registrar componente en el sistema de navegación
+  // Registrar componente en el sistema de navegación
   useEffect(() => {
     const editorApi = {
       focus: () => {
@@ -511,11 +540,10 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
       },
       blur: () => {
         if (editorRef.current) {
-          // Desenfocar editor si es necesario
           announce('Saliendo del editor');
         }
       },
-      readLine: readCurrentLine,
+      readLine: readSelectionOrLine, // CAMBIO: usar la nueva función
       readWord: readWordAtCursor,
       readAll: readAllContent,
       goToLine: goToLine,
@@ -535,7 +563,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     unregisterComponent, 
     speak, 
     announce,
-    readCurrentLine,
+    readSelectionOrLine, // CAMBIO
     readWordAtCursor,
     readAllContent,
     goToLine,
@@ -546,28 +574,28 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
 
   // Manejador de teclado del editor
   const handleEditorKeyDown = useCallback((event) => {
-    // Ctrl+L: Leer línea actual
+    // Ctrl+L: Leer línea actual o selección
     if (event.ctrlKey && event.key === 'l') {
       event.preventDefault();
-      readCurrentLine();
+      readSelectionOrLine();
       return;
     }
 
-    // Ctrl+K: Leer palabra bajo cursor
+    // Ctrl+K: Leer palabra bajo cursor (MANTENER)
     if (event.ctrlKey && event.key === 'k') {
       event.preventDefault();
       readWordAtCursor();
       return;
     }
 
-    // Ctrl+Shift+L: Leer todo el contenido
+    // Ctrl+Shift+L: Leer todo el contenido (MANTENER)
     if (event.ctrlKey && event.shiftKey && event.key === 'L') {
       event.preventDefault();
       readAllContent();
       return;
     }
 
-    // Ctrl+G: Ir a línea (mostrar prompt)
+    // Ctrl+G: Ir a línea (MANTENER)
     if (event.ctrlKey && event.key === 'g') {
       event.preventDefault();
       const lineNumber = prompt('Ir a línea número:');
@@ -577,14 +605,14 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
       return;
     }
 
-    // Ctrl+I: Información del cursor
+    // Ctrl+I: Información del cursor (MANTENER)
     if (event.ctrlKey && event.key === 'i') {
       event.preventDefault();
       readCursorInfo();
       return;
     }
 
-    // F5: Ejecutar código
+    // F5: Ejecutar código (MANTENER)
     if (event.key === 'F5') {
       event.preventDefault();
       handleSendFile();
@@ -592,7 +620,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
       return;
     }
 
-    // Alt+S: Guardar archivo
+    // Alt+S: Guardar archivo (MANTENER)
     if (event.altKey && event.key === 's') {
       event.preventDefault();
       if (onSave) {
@@ -601,26 +629,27 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
       return;
     }
 
-    // Ctrl+Shift+V: Transcribir voz
+    // Ctrl+Shift+V: Transcribir voz (MANTENER)
     if (event.ctrlKey && event.shiftKey && event.key === 'V') {
       event.preventDefault();
       handleTranscription();
       return;
     }
 
-    // Anunciar navegación con flechas
+    // Anunciar navegación con flechas - SIMPLIFICADO
     if (['ArrowUp', 'ArrowDown'].includes(event.key)) {
       setTimeout(() => {
         const model = editorRef.current?.getModel();
         const position = editorRef.current?.getPosition();
         if (model && position) {
           const lineContent = model.getLineContent(position.lineNumber);
-          announce(`Línea ${position.lineNumber}: ${lineContent || 'vacía'}`);
+          // Solo anunciar el número de línea brevemente
+          announce(`Línea ${position.lineNumber}`);
         }
       }, 50);
     }
   }, [
-    readCurrentLine,
+    readSelectionOrLine,
     readWordAtCursor,
     readAllContent,
     goToLine,
@@ -650,7 +679,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
         readCurrentLine();
       }
     },
-    readLine: readCurrentLine,
+    readLine: readSelectionOrLine, 
     readWord: readWordAtCursor,
     readAll: readAllContent,
     goToLine: goToLine,
@@ -659,7 +688,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     currentFileName, 
     editorContent, 
     speak, 
-    readCurrentLine,
+    readSelectionOrLine, 
     readWordAtCursor,
     readAllContent,
     goToLine
