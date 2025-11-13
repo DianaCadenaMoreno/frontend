@@ -10,7 +10,8 @@ import AddCircleIcon from '@mui/icons-material/AddCircle';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import { useDebuggerWebSocket } from '../hooks/useDebuggerWebSocket';
 
-function Debug({ contrast, textEditorRef }) {
+// function Debug({ contrast, textEditorRef }) {
+const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
   const [breakpointLine, setBreakpointLine] = useState('');
   const [manualBreakpoints, setManualBreakpoints] = useState([]);
   const [evalExpression, setEvalExpression] = useState('');
@@ -655,6 +656,7 @@ function Debug({ contrast, textEditorRef }) {
       )} */}
     </Box>
   );
-}
+});
 
+Debug.displayName = 'Debug';
 export default Debug;

@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Box, TextField, Typography } from '@mui/material';
+import { useScreenReader } from '../contexts/ScreenReaderContext';
+import { useAppNavigation } from '../contexts/NavigationContext';
 
-function Terminal({ debug, contrast, output, pid, textEditorRef }) { // Cambiar 'ref' por 'textEditorRef'
+const Terminal = React.forwardRef(({ debug, contrast, output, pid, textEditorRef }, ref) => {
   const [history, setHistory] = useState([]); 
   const [input, setInput] = useState(''); 
   const terminalRef = useRef(null);
   const inputRef = useRef(null);
+  const { speak, speakOnFocus, speakOnHover, cancelHoverSpeak, announce } = useScreenReader();
+  const { registerComponent, unregisterComponent, setFocusedComponent } = useAppNavigation();
 
   const getThemeColors = (contrast) => {
     switch(contrast) {
@@ -66,6 +70,29 @@ function Terminal({ debug, contrast, output, pid, textEditorRef }) { // Cambiar 
     }
   }, []);
 
+  // Registrar componente en el sistema de navegación
+  useEffect(() => {
+    const terminalAPI = {
+      focus: () => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          speak('Terminal enfocada. Escribe comandos de tu programa en ejecución.');
+        }
+      },
+      clear: () => {
+        setHistory([]);
+        setInput('');
+        announce('Terminal limpiada');
+      },
+    };
+
+    registerComponent('terminal', terminalAPI);
+
+    return () => {
+      unregisterComponent('terminal');
+    };
+  }, [registerComponent, unregisterComponent, speak, announce]);
+
   const handleKeyDown = async (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
@@ -74,6 +101,22 @@ function Terminal({ debug, contrast, output, pid, textEditorRef }) { // Cambiar 
       
       if (command === 'clear') {
         setHistory([]);
+        return;
+      }
+
+      // Ctrl+C - Interrumpir proceso
+      if (event.ctrlKey && event.key === 'c') {
+        event.preventDefault();
+        const ws = textEditorRef?.current?.getWebSocket();
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            action: 'interrupt',
+            pid: pid
+          }));
+          announce('Señal de interrupción enviada');
+        } else {
+          announce('No hay proceso en ejecución');
+        }
         return;
       }
 
@@ -179,6 +222,10 @@ function Terminal({ debug, contrast, output, pid, textEditorRef }) { // Cambiar 
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
+          onFocus={() => {
+            setFocusedComponent('terminal');
+            speakOnFocus('terminal envia comandos, también puedes dar CTRL + C para finalizar el proceso actual.');
+          }}
           variant="standard"
           fullWidth
           placeholder="Escribe un comando o input..."
@@ -192,10 +239,13 @@ function Terminal({ debug, contrast, output, pid, textEditorRef }) { // Cambiar 
             },
             autoComplete: 'off',
           }}
+          aria-label = "Campo de entrada de la terminal"
+          aria-describedby='terminal-help-text'
         />
       </Box>
     </Box>
   );
-}
+});
 
+Terminal.displayName = 'Terminal';
 export default Terminal;
