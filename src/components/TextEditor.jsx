@@ -1,15 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Typography, Breadcrumbs, Link, Button, CircularProgress, Stack } from '@mui/material';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
 import Editor, { loader } from '@monaco-editor/react'; // Importa loader
 import axiosInstance from '../utils/axiosInstance';
+import { useScreenReader } from '../contexts/ScreenReaderContext';
+import { useAppNavigation } from '../contexts/NavigationContext';
 
-function handleClick(event) {
-  event.preventDefault();
-  console.info('You clicked a breadcrumb.');
-}
-
-// Definir tema personalizado de alto contraste
+// tema personalizado de alto contraste
 const defineCustomThemes = async () => {
   const monaco = await loader.init();
   
@@ -120,6 +117,15 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
   const editorRef = useRef(null);
   const [debugPoints, setDebugPoints] = useState({ start: null, end: null, content: '' });
   const [breakpoints, setBreakpoints] = useState([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const streamRef = useRef(null);
+  const [wsInstance, setWsInstance] = useState(null);
+  const [currentLine, setCurrentLine] = useState(1);
+  const [currentColumn, setCurrentColumn] = useState(1);
+  const { speak, speakOnFocus, announce } = useScreenReader();
+  const { registerComponent, unregisterComponent } = useAppNavigation();
 
   useEffect(() => {
     defineCustomThemes();
@@ -201,24 +207,6 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
 
   const [isEditorEmpty, setIsEditorEmpty] = useState(true);  
 
-  // const handleEditorChange = (value) => {
-  //   if (!hasStartedTyping) {
-  //     setHasStartedTyping(true);
-  //     setEditorContent('');
-  //   } else {
-  //     setEditorContent(value);
-  //     handleAnalyzeStructure(value);
-
-  //     if (value && 'speechSynthesis' in window) {
-  //       const utterance = new SpeechSynthesisUtterance(value);
-  //       utterance.onerror = (e) => console.error('Speech synthesis error:', e);
-  //       window.speechSynthesis.speak(utterance);
-  //     } else {
-  //       console.error('Speech synthesis not supported in this browser.');
-  //     }
-  //   }
-  // };
-
   const handleEditorChange = (value) => {
     if (value === undefined || value.trim() === "") {
       setIsEditorEmpty(true);
@@ -230,63 +218,41 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     }
   };
 
-  const handleCursorChange = (e) => {
+  const handleCursorChange = useCallback((e) => {
     const position = e.position;
     const model = editorRef.current.getModel();
-    const lineContent = model.getLineContent(position.lineNumber).substring(0, position.column - 1);
     
-    let textToSpeak = lineContent || `Line ${position.lineNumber}`;
-    // if ('speechSynthesis' in window) {
-    //   const utterance = new SpeechSynthesisUtterance(textToSpeak);
-    //   utterance.lang = 'es-ES'; 
-    //   utterance.onerror = (error) => console.error('Speech synthesis error:', error);
-    //   window.speechSynthesis.speak(utterance);
-    // } else {
-    //   console.error('Speech synthesis not supported in this browser.');
-    // }
-  };
-
-  // const handleSendFile = async () => {
-  //   setIsLoading(true);
-  //   const blob = new Blob([editorContent], { type: 'text/x-python' });
-  //   const formData = new FormData();
-  //   formData.append('file', blob, 'main.py');
-  //   formData.append('main_file', 'main.py');
-  //   console.log(formData);
-  //   try {
-  //     const response = await axiosInstance.post('run/', formData);
-  //     const result = response.data;
-  //     setIsLoading(false);
-  //     console.log(result);
-  //     setOutput(result);
-  //     setPid(result.pid);
-  //   } catch (error) {
-  //     console.error('Error uploading file:', error);
-  //     setIsLoading(false);
-  //   }
-  // };
-  const [wsInstance, setWsInstance] = useState(null);
+    if (!model) return;
+    
+    setCurrentLine(position.lineNumber);
+    setCurrentColumn(position.column);
+    
+    // Solo anunciar cambios significativos (navegación entre líneas)
+    if (Math.abs(position.lineNumber - currentLine) >= 1) {
+      const lineContent = model.getLineContent(position.lineNumber);
+      announce(`Línea ${position.lineNumber}`);
+    }
+  }, [currentLine, announce]);
 
   const handleSendFile = () => {
     if (!editorContent.trim()) {
       console.error('No hay código para ejecutar.');
       setOutput([{ prompt: '', text: 'Error: No hay código para ejecutar', color: '#ff5555' }]);
+      speak('Error: No hay código para ejecutar');
       return;
     }
 
-    // Limpiar output anterior
     setOutput([{ prompt: '', text: 'Conectando...', color: '#8be9fd' }]);
+    speak('Conectando con el servidor');
 
-    // Crear WebSocket
-    //const wsUrl = 'ws://localhost/ws/terminal/'; // local
-    const wsUrl = 'wss://backend-g1zl.onrender.com/ws/terminal/'; // producción
+    const wsUrl = 'wss://backend-g1zl.onrender.com/ws/terminal/';
     const ws = new WebSocket(wsUrl);
     
     ws.onopen = () => {
       console.log('WebSocket conectado');
       setOutput([{ prompt: '', text: 'Ejecutando código...', color: '#8be9fd' }]);
+      speak('Ejecutando código');
       
-      // Enviar código al servidor
       ws.send(JSON.stringify({
         action: 'upload_files',
         files: {
@@ -301,7 +267,6 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
         
         switch(data.type) {
           case 'files_saved':
-            // Iniciar ejecución
             ws.send(JSON.stringify({
               action: 'run',
               entrypoint: 'main.py',
@@ -312,6 +277,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
           case 'started':
             setPid(data.pid);
             setOutput(prev => [...prev, { prompt: '', text: `Proceso iniciado (PID: ${data.pid})`, color: '#50fa7b' }]);
+            speak(`Proceso iniciado con PID ${data.pid}`);
             break;
             
           case 'output':
@@ -328,18 +294,17 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
               text: `\nProceso finalizado (código: ${data.exit_code})`,
               color: data.exit_code === 0 ? '#50fa7b' : '#ff5555'
             }]);
+            speak(data.exit_code === 0 ? 'Ejecución completada exitosamente' : `Ejecución finalizada con errores, código ${data.exit_code}`);
             break;
             
           case 'timeout':
             setOutput(prev => [...prev, { prompt: '', text: '\nTimeout: El proceso excedió el tiempo límite', color: '#ff5555' }]);
+            speak('Tiempo de ejecución excedido');
             break;
             
           case 'error':
             setOutput(prev => [...prev, { prompt: '', text: `Error: ${data.message}`, color: '#ff5555' }]);
-            break;
-            
-          case 'stdin_sent':
-            // Confirmación de input enviado
+            speak(`Error: ${data.message}`);
             break;
             
           default:
@@ -354,6 +319,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
       setOutput(prev => [...prev, { prompt: '', text: 'Error de conexión WebSocket', color: '#ff5555' }]);
+      speak('Error de conexión con el servidor');
     };
 
     ws.onclose = () => {
@@ -407,8 +373,9 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
         };
   
         mediaRecorder.onstop = async () => {
-          stream.getTracks().forEach(track => track.stop()); // Liberar micrófono
+          stream.getTracks().forEach(track => track.stop());
           setIsRecording(false);
+          speak('Procesando transcripción');
   
           if (audioChunksRef.current.length === 0) return;
   
@@ -425,26 +392,278 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
             if (code) {
               setEditorContent(prev => prev + '\n' + code);
               handleAnalyzeStructure(code);
+              speak('Código transcrito e insertado en el editor');
             }
           } catch (err) {
             console.error('Error al enviar audio:', err);
+            speak('Error al transcribir el audio');
           }
         };
   
         mediaRecorder.start();
         setIsRecording(true);
+        speak('Grabación iniciada');
       } catch (error) {
         console.error('Error accediendo al micrófono:', error);
+        speak('Error al acceder al micrófono');
       }
     } else {
       mediaRecorderRef.current?.stop();
+      speak('Grabación detenida');
     }
   };
-  
-  const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
-  const streamRef = useRef(null);
+
+  const readCurrentLine = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    const model = editorRef.current.getModel();
+    const position = editorRef.current.getPosition();
+    
+    if (!model || !position) return;
+    
+    const lineContent = model.getLineContent(position.lineNumber);
+    const lineNumber = position.lineNumber;
+    
+    // Leer número de línea y contenido
+    const textToRead = lineContent.trim() 
+      ? `Línea ${lineNumber}: ${lineContent}` 
+      : `Línea ${lineNumber} vacía`;
+    
+    speak(textToRead);
+    setCurrentLine(lineNumber);
+    setCurrentColumn(position.column);
+  }, [speak]);
+
+  // Función para leer palabra bajo el cursor
+  const readWordAtCursor = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    const model = editorRef.current.getModel();
+    const position = editorRef.current.getPosition();
+    
+    if (!model || !position) return;
+    
+    const wordAtPosition = model.getWordAtPosition(position);
+    
+    if (wordAtPosition) {
+      speak(`Palabra: ${wordAtPosition.word}`);
+    } else {
+      speak('Sin palabra en la posición del cursor');
+    }
+  }, [speak]);
+
+  // Función para leer todo el contenido del editor
+  const readAllContent = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    const model = editorRef.current.getModel();
+    if (!model) return;
+    
+    const content = model.getValue();
+    
+    if (content.trim()) {
+      speak(`Contenido del editor. Total de líneas: ${model.getLineCount()}. ${content}`);
+    } else {
+      speak('El editor está vacío');
+    }
+  }, [speak]);
+
+  // Función para ir a una línea específica
+  const goToLine = useCallback((lineNumber) => {
+    if (!editorRef.current) return;
+    
+    const model = editorRef.current.getModel();
+    if (!model) return;
+    
+    const totalLines = model.getLineCount();
+    
+    if (lineNumber < 1 || lineNumber > totalLines) {
+      speak(`Número de línea inválido. El rango es de 1 a ${totalLines}`);
+      return;
+    }
+    
+    editorRef.current.setPosition({ lineNumber, column: 1 });
+    editorRef.current.revealLineInCenter(lineNumber);
+    
+    const lineContent = model.getLineContent(lineNumber);
+    speak(`Movido a línea ${lineNumber}: ${lineContent || 'vacía'}`);
+  }, [speak]);
+
+  // Función para leer información del cursor
+  const readCursorInfo = useCallback(() => {
+    if (!editorRef.current) return;
+    
+    const position = editorRef.current.getPosition();
+    if (!position) return;
+    
+    speak(`Cursor en línea ${position.lineNumber}, columna ${position.column}`);
+  }, [speak]);
+
+   // Registrar componente en el sistema de navegación
+  useEffect(() => {
+    const editorApi = {
+      focus: () => {
+        if (editorRef.current) {
+          editorRef.current.focus();
+          speak('Editor de código enfocado');
+          readCurrentLine();
+        }
+      },
+      blur: () => {
+        if (editorRef.current) {
+          // Desenfocar editor si es necesario
+          announce('Saliendo del editor');
+        }
+      },
+      readLine: readCurrentLine,
+      readWord: readWordAtCursor,
+      readAll: readAllContent,
+      goToLine: goToLine,
+      readCursor: readCursorInfo,
+      execute: handleSendFile,
+      save: onSave,
+      transcribe: handleTranscription
+    };
+
+    registerComponent('editor', editorApi);
+
+    return () => {
+      unregisterComponent('editor');
+    };
+  }, [
+    registerComponent, 
+    unregisterComponent, 
+    speak, 
+    announce,
+    readCurrentLine,
+    readWordAtCursor,
+    readAllContent,
+    goToLine,
+    readCursorInfo,
+    handleSendFile,
+    onSave
+  ]);
+
+  // Manejador de teclado del editor
+  const handleEditorKeyDown = useCallback((event) => {
+    // Ctrl+L: Leer línea actual
+    if (event.ctrlKey && event.key === 'l') {
+      event.preventDefault();
+      readCurrentLine();
+      return;
+    }
+
+    // Ctrl+K: Leer palabra bajo cursor
+    if (event.ctrlKey && event.key === 'k') {
+      event.preventDefault();
+      readWordAtCursor();
+      return;
+    }
+
+    // Ctrl+Shift+L: Leer todo el contenido
+    if (event.ctrlKey && event.shiftKey && event.key === 'L') {
+      event.preventDefault();
+      readAllContent();
+      return;
+    }
+
+    // Ctrl+G: Ir a línea (mostrar prompt)
+    if (event.ctrlKey && event.key === 'g') {
+      event.preventDefault();
+      const lineNumber = prompt('Ir a línea número:');
+      if (lineNumber) {
+        goToLine(parseInt(lineNumber, 10));
+      }
+      return;
+    }
+
+    // Ctrl+I: Información del cursor
+    if (event.ctrlKey && event.key === 'i') {
+      event.preventDefault();
+      readCursorInfo();
+      return;
+    }
+
+    // F5: Ejecutar código
+    if (event.key === 'F5') {
+      event.preventDefault();
+      handleSendFile();
+      speak('Ejecutando código');
+      return;
+    }
+
+    // Alt+S: Guardar archivo
+    if (event.altKey && event.key === 's') {
+      event.preventDefault();
+      if (onSave) {
+        onSave();
+      }
+      return;
+    }
+
+    // Ctrl+Shift+V: Transcribir voz
+    if (event.ctrlKey && event.shiftKey && event.key === 'V') {
+      event.preventDefault();
+      handleTranscription();
+      return;
+    }
+
+    // Anunciar navegación con flechas
+    if (['ArrowUp', 'ArrowDown'].includes(event.key)) {
+      setTimeout(() => {
+        const model = editorRef.current?.getModel();
+        const position = editorRef.current?.getPosition();
+        if (model && position) {
+          const lineContent = model.getLineContent(position.lineNumber);
+          announce(`Línea ${position.lineNumber}: ${lineContent || 'vacía'}`);
+        }
+      }, 50);
+    }
+  }, [
+    readCurrentLine,
+    readWordAtCursor,
+    readAllContent,
+    goToLine,
+    readCursorInfo,
+    handleSendFile,
+    onSave,
+    handleTranscription,
+    speak,
+    announce
+  ]);
+
+  // Función imperativa para acceder desde fuera
+  React.useImperativeHandle(ref, () => ({
+    getWebSocket: () => wsInstance,
+    getCurrentFileName: () => currentFileName,
+    getContent: () => editorContent,
+    focusEditor: () => {
+      if (editorRef.current) {
+        const model = editorRef.current.getModel();
+        if (model) {
+          const lastLine = model.getLineCount();
+          const lastColumn = model.getLineMaxColumn(lastLine);
+          editorRef.current.setPosition({ lineNumber: lastLine, column: lastColumn });
+        }
+        editorRef.current.focus();
+        speak('Editor de código enfocado');
+        readCurrentLine();
+      }
+    },
+    readLine: readCurrentLine,
+    readWord: readWordAtCursor,
+    readAll: readAllContent,
+    goToLine: goToLine,
+  }), [
+    wsInstance, 
+    currentFileName, 
+    editorContent, 
+    speak, 
+    readCurrentLine,
+    readWordAtCursor,
+    readAllContent,
+    goToLine
+  ]);
 
   // Manejar Alt+S en el editor
   React.useEffect(() => {
@@ -498,7 +717,8 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
             size="small" 
             color="success" 
             onClick={handleSendFile} 
-            aria-label="Ejecutar archivo"
+            aria-label="Ejecutar archivo (Enter)"
+            title="Ejecutar (Enter)"
             style={{ flex: '1 1 auto', minWidth: '120px' }}
           >
             {isLoading ? <CircularProgress size={24} color="inherit" /> : 'Ejecutar'}
@@ -508,7 +728,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
             size="small"
             color={isRecording ? "error" : "info"}
             onClick={handleTranscription}
-            aria-label={isRecording ? "Detener grabación" : "Iniciar grabación"}
+            aria-label={isRecording ? "Detener grabación (Enter)" : "Iniciar grabación (Enter)"}
             style={{ flex: '1 1 auto', minWidth: '120px' }}
           >
             {isRecording ? 'Detener' : 'Transcribir'}
@@ -544,7 +764,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
                 zIndex: 1,
               }}
             >
-              # Comienza a escribir para ignorar...
+              
             </div>
           )}
           <Editor
@@ -574,18 +794,21 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
               cursorWidth: 2,
               cursorBlinking: 'smooth',
               smoothScrolling: true,
-              // Aumentar contraste visual
               renderWhitespace: contrast === 'high-contrast' ? 'boundary' : 'none',
               guides: {
                 indentation: true,
                 highlightActiveIndentation: true,
               },
+              ariaLabel: 'Editor de código Python',
             }}
             theme={getEditorTheme(contrast)}
             onMount={(editor) => {
               editorRef.current = editor;
               editor.onDidChangeCursorPosition(handleCursorChange);
               editor.onMouseDown(handleBreakpointClick);
+              
+              // Agregar manejador de teclado al editor
+              editor.onKeyDown(handleEditorKeyDown);
             }}
           />
         </Box>

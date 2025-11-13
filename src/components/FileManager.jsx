@@ -32,7 +32,8 @@ const MAX_FILES = 50;
 const MAX_FOLDERS = 20;
 const MAX_STORAGE_SIZE = 5 * 1024 * 1024; // 5MB en bytes
 
-function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleCollapse,screenReaderEnabled,currentFileId, onSaveFile, ...props }) {
+const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, collapsed, onToggleCollapse,screenReaderEnabled,currentFileId, onSaveFile, ...props }, ref) => {
+  
   const [files, setFiles] = React.useState(() => JSON.parse(localStorage.getItem('files')) || []);
   const [folders, setFolders] = React.useState(() => JSON.parse(localStorage.getItem('folders')) || []);
   const [contextMenu, setContextMenu] = React.useState(null);
@@ -57,8 +58,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
   const hasCodeStructure = codeStructure && codeStructure.length > 0;
   const [lastTypedWord, setLastTypedWord] = React.useState('');
   const typingTimeoutRef = React.useRef(null);
-  const [focusedIndex, setFocusedIndex] = React.useState(0);
-  const [focusedSection, setFocusedSection] = React.useState('buttons'); 
+  const [focusedSection, setFocusedSection] = React.useState('files'); 
   const fileManagerRef = React.useRef(null);
   const lastMessageRef = React.useRef(null);
   const { enabled, speak, speakOnHover, speakOnFocus, cancelHoverSpeak, announce, stop } = useScreenReader();
@@ -70,6 +70,9 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
   const { registerComponent, unregisterComponent, setFocusedComponent } = useAppNavigation();
   const fileManagerContainerRef = React.useRef(null);
   const [isFileManagerFocused, setIsFileManagerFocused] = React.useState(false);
+  // const [selectedIndex, setFocusedIndex] = React.useState(0);
+  // const [selectedElement, setSelectedElement] = React.useState(null);
+  const [selectedIndex, setSelectedIndex] = React.useState(0)
 
   // Función para obtener colores del tema
   const getThemeColors = (contrast) => {
@@ -84,7 +87,9 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
           hover: '#2a2a2a',
           accent: '#f7ff0fff',
           success: '#50fa7b',
-          info: '#8be9fd'
+          info: '#8be9fd',
+          error: '#ff0000',
+          warning: '#ffaa00'
         };
       case 'blue-contrast':
         return {
@@ -348,27 +353,48 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
 
   // Obtener elementos navegables según la sección actual
   const getNavigableElements = React.useCallback(() => {
-    if (tabIndex === 1) {
-      return [];
-    }
+  if (tabIndex === 1) {
+    // En el chat, no hay navegación de elementos
+    return [];
+  }
 
-    switch (focusedSection) {
-      case 'buttons':
-        return ['createFile', 'createFolder', 'openFile', 'openFolder'];
-      case 'files':
-        const allFiles = [
-          ...folders.flatMap(folder => 
-            [{ type: 'folder', ...folder }, ...folder.files.map(f => ({ type: 'file', ...f, parentFolder: folder.id }))]
-          ),
-          ...files.map(f => ({ type: 'file', ...f }))
-        ];
-        return allFiles;
-      case 'structure':
-        return codeStructure || [];
-      default:
-        return [];
-    }
-  }, [focusedSection, folders, files, codeStructure, tabIndex]);
+  switch (focusedSection) {
+    case 'buttons':
+      return [
+        { type: 'button', action: 'createFile' },
+        { type: 'button', action: 'createFolder' },
+        { type: 'button', action: 'openFile' },
+        { type: 'button', action: 'openFolder' }
+      ];
+    
+    case 'files':
+      const elements = [];
+      
+      // Agregar carpetas
+      folders.forEach(folder => {
+        elements.push({ ...folder, type: 'folder' });
+        // Si la carpeta está abierta, agregar sus archivos
+        if (openFolders[folder.id]) {
+          folder.files.forEach(file => {
+            elements.push({ ...file, type: 'file', parentFolder: folder.id });
+          });
+        }
+      });
+      
+      // Agregar archivos sin carpeta
+      files.forEach(file => {
+        elements.push({ ...file, type: 'file' });
+      });
+      
+      return elements;
+    
+    case 'structure':
+      return codeStructure || [];
+    
+    default:
+      return [];
+  }
+}, [focusedSection, folders, files, codeStructure, openFolders, tabIndex]);
 
   // Obtener descripción del elemento enfocado
   const getFocusedElementDescription = React.useCallback(() => {
@@ -385,11 +411,11 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
         openFile: 'Botón: Abrir archivo desde el sistema',
         openFolder: 'Botón: Abrir carpeta desde el sistema'
       };
-      return buttonNames[elements[focusedIndex]] || '';
+      return buttonNames[elements[selectedIndex]] || '';
     }
 
     if (focusedSection === 'files') {
-      const element = elements[focusedIndex];
+      const element = elements[selectedIndex];
       if (!element) return '';
       
       if (element.type === 'folder') {
@@ -403,13 +429,13 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
     }
 
     if (focusedSection === 'structure') {
-      const element = elements[focusedIndex];
+      const element = elements[selectedIndex];
       if (!element) return '';
       return `${element.type} ${element.name || 'sin nombre'}, desde línea ${element.line} hasta línea ${element.end_line}`;
     }
 
     return '';
-  }, [focusedSection, focusedIndex, getNavigableElements, openFolders, tabIndex]);
+  }, [focusedSection, selectedIndex, getNavigableElements, openFolders, tabIndex]);
 
   // Manejar navegación por teclado
   const handleKeyDown = React.useCallback((e) => {
@@ -421,7 +447,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setFocusedIndex(prev => {
+        setSelectedIndex(prev => {
           const newIndex = prev < maxIndex ? prev + 1 : 0;
           return newIndex;
         });
@@ -429,7 +455,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
 
       case 'ArrowUp':
         e.preventDefault();
-        setFocusedIndex(prev => {
+        setSelectedIndex(prev => {
           const newIndex = prev > 0 ? prev - 1 : maxIndex;
           return newIndex;
         });
@@ -440,18 +466,18 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
         if (e.shiftKey) {
           if (focusedSection === 'files') {
             setFocusedSection('buttons');
-            setFocusedIndex(0);
+            setSelectedIndex(0);
           } else if (focusedSection === 'structure' && hasCodeStructure) {
             setFocusedSection('files');
-            setFocusedIndex(0);
+            setSelectedIndex(0);
           }
         } else {
           if (focusedSection === 'buttons') {
             setFocusedSection('files');
-            setFocusedIndex(0);
+            setSelectedIndex(0);
           } else if (focusedSection === 'files' && hasCodeStructure) {
             setFocusedSection('structure');
-            setFocusedIndex(0);
+            setSelectedIndex(0);
           }
         }
         break;
@@ -464,9 +490,8 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
       case 'm':
       case 'M':
         e.preventDefault();
-        if (focusedSection === 'files' && elements[focusedIndex]) {
-          const element = elements[focusedIndex];
-          // Simular evento contextual en el centro del elemento
+        if (focusedSection === 'files' && elements[selectedIndex]) {
+          const element = elements[selectedIndex];
           const fakeEvent = {
             preventDefault: () => {},
             stopPropagation: () => {},
@@ -480,7 +505,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
       default:
         break;
     }
-  }, [collapsed, focusedSection, focusedIndex, getNavigableElements, hasCodeStructure, tabIndex, handleContextMenu]);
+  }, [collapsed, focusedSection, selectedIndex, getNavigableElements, hasCodeStructure, tabIndex, handleContextMenu]);
 
   // Manejar Enter en el elemento enfocado
   const handleEnterPress = React.useCallback(() => {
@@ -493,18 +518,18 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
         openFile: () => handleOpenFile(),
         openFolder: () => handleOpenFolder()
       };
-      actions[elements[focusedIndex]]?.();
+      actions[elements[selectedIndex]]?.();
     }
 
     if (focusedSection === 'files') {
-      const element = elements[focusedIndex];
+      const element = elements[selectedIndex];
       if (element?.type === 'folder') {
         toggleFolder(element.id);
       } else if (element?.type === 'file') {
         handleFileClick(element);
       }
     }
-  }, [focusedSection, focusedIndex, getNavigableElements]);
+  }, [focusedSection, selectedIndex, getNavigableElements]);
 
   // Manejar navegación por teclado en el chat
   const handleChatKeyDown = React.useCallback((e) => {
@@ -886,11 +911,21 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
     setNewName('');
   };
 
+  // Modificar handleFileClick para incluir la selección visual
   const handleFileClick = (file) => {
+    const elements = getNavigableElements();
+    const clickedIndex = elements.findIndex(el => 
+      el.type === 'file' && el.id === file.id
+    );
+    
+    if (clickedIndex !== -1) {
+      setSelectedIndex(clickedIndex);
+    }
+    
     const ext = file.name.split('.').pop().toLowerCase();
     if (ext === 'py' || ext === 'txt') {
       if (onFileOpen) {
-        onFileOpen(file.name, file.content || '');
+        onFileOpen(file.name, file.content || '', file.id);
         speak(`Archivo ${file.name} abierto en el editor`);
       } else {
         console.error('onFileOpen no está definido');
@@ -912,6 +947,15 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
   }, [onSaveFile]);
 
   const toggleFolder = (folderId) => {
+    const elements = getNavigableElements();
+    const folderIndex = elements.findIndex(el => 
+      el.type === 'folder' && el.id === folderId
+    );
+    
+    if (folderIndex !== -1) {
+      setSelectedIndex(folderIndex);
+    }
+    
     setOpenFolders(prev => ({
       ...prev,
       [folderId]: !prev[folderId]
@@ -1273,7 +1317,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
     if (description) {
       speakOnFocus(description);
     }
-  }, [focusedIndex, focusedSection, collapsed, getFocusedElementDescription, speakOnFocus, tabIndex]);
+  }, [selectedIndex, focusedSection, collapsed, getFocusedElementDescription, speakOnFocus, tabIndex]);
 
   // Focus en el componente al montar
   React.useEffect(() => {
@@ -1336,7 +1380,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
         if (fileManagerContainerRef.current) {
           fileManagerContainerRef.current.focus();
           setFocusedSection('buttons');
-          setFocusedIndex(0);
+          setSelectedIndex(0);
           speak('Gestor de archivos. Presiona Tab para navegar entre secciones. Use las flechas para navegar dentro de cada sección.');
         }
       },
@@ -1356,7 +1400,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
       openStructure: () => {
         setTabIndex(0);
         setFocusedSection('structure');
-        setFocusedIndex(0);
+        setSelectedIndex(0);
         speak('Estructura del código');
       }
     };
@@ -1699,7 +1743,13 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                           aria-label="Enviar mensaje al copiloto"
                           onMouseEnter={() => speakOnHover('Enviar mensaje al copiloto')}
                           onMouseLeave={cancelHoverSpeak}
-                          sx={{ color: themeColors.accent }}
+                          sx={{ 
+                            color: themeColors.accent,
+                            '&.Mui-disabled': {
+                              color: themeColors.textSecondary,
+                              opacity: 0.5
+                            }
+                          }}
                           disabled={!prompt.trim() || loading}
                         >
                           <SendIcon />
@@ -1788,7 +1838,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                             sx={{ 
                               color: themeColors.text,
                               borderColor: themeColors.border,
-                              backgroundColor: focusedSection === 'buttons' && focusedIndex === 0 ? themeColors.hover : 'transparent',
+                              backgroundColor: focusedSection === 'buttons' && selectedIndex === 0 ? themeColors.hover : 'transparent',
                               '&:hover': {
                                 backgroundColor: themeColors.hover,
                                 borderColor: themeColors.accent
@@ -1811,7 +1861,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                             sx={{ 
                               color: themeColors.text,
                               borderColor: themeColors.border,
-                              backgroundColor: focusedSection === 'buttons' && focusedIndex === 1 ? themeColors.hover : 'transparent',
+                              backgroundColor: focusedSection === 'buttons' && selectedIndex === 1 ? themeColors.hover : 'transparent',
                               '&:hover': {
                                 backgroundColor: themeColors.hover,
                                 borderColor: themeColors.accent
@@ -1837,7 +1887,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                             sx={{ 
                               color: themeColors.text,
                               borderColor: themeColors.border,
-                              backgroundColor: focusedSection === 'buttons' && focusedIndex === 2 ? themeColors.hover : 'transparent',
+                              backgroundColor: focusedSection === 'buttons' && selectedIndex === 2 ? themeColors.hover : 'transparent',
                               '&:hover': {
                                 backgroundColor: themeColors.hover,
                                 borderColor: themeColors.accent
@@ -1860,7 +1910,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                             sx={{ 
                               color: themeColors.text,
                               borderColor: themeColors.border,
-                              backgroundColor: focusedSection === 'buttons' && focusedIndex === 3 ? themeColors.hover : 'transparent',
+                              backgroundColor: focusedSection === 'buttons' && selectedIndex === 3 ? themeColors.hover : 'transparent',
                               '&:hover': {
                                 backgroundColor: themeColors.hover,
                                 borderColor: themeColors.accent
@@ -1897,7 +1947,8 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                       {getNavigableElements().map((element, index) => {
                         if (focusedSection !== 'files') return null;
                         
-                        const isFocused = focusedIndex === index;
+                        const isSelected = selectedIndex === index;
+                        const isCurrentFile = element.type === 'file' && currentFileId === element.id;
                         
                         if (element.type === 'folder') {
                           return (
@@ -1910,10 +1961,14 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                                   p: 0.5,
                                   borderRadius: 1,
                                   color: themeColors.text,
-                                  backgroundColor: isFocused ? themeColors.accent : 'transparent',
-                                  '&:hover': {
-                                    backgroundColor: themeColors.hover
-                                  }
+                                  backgroundColor: isSelected 
+                                    ? themeColors.accent 
+                                    : 'transparent',
+                                  border: isSelected ? `2px solid ${themeColors.accent}` : '2px solid transparent',
+                                  '&:hover': !isSelected ? {
+                                    backgroundColor: themeColors.hover,
+                                    border: `2px solid ${themeColors.accent}`
+                                  } : {}
                                 }}
                                 onClick={() => toggleFolder(element.id)}
                                 onContextMenu={(e) => handleContextMenu(e, element)}
@@ -1921,9 +1976,17 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                                 onMouseEnter={() => speakOnHover(`Carpeta ${element.name}, ${openFolders[element.id] ? 'expandida' : 'colapsada'}, contiene ${element.files.length} archivos`)}
                                 onMouseLeave={cancelHoverSpeak}
                               >
-                                {openFolders[element.id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                                <Folder sx={{ mr: 1, color: isFocused ? themeColors.background : themeColors.accent }} />
-                                <Typography variant="body2" sx={{ flex: 1, color: isFocused ? themeColors.background : themeColors.text }}>
+                                {openFolders[element.id] ? (
+                                  <ExpandLessIcon sx={{ color: isSelected ? themeColors.background : themeColors.accent }} />
+                                ) : (
+                                  <ExpandMoreIcon sx={{ color: isSelected ? themeColors.background : themeColors.accent }} />
+                                )}
+                                <Folder sx={{ mr: 1, color: isSelected ? themeColors.background : themeColors.accent }} />
+                                <Typography variant="body2" sx={{ 
+                                  flex: 1, 
+                                  color: isSelected ? themeColors.background : themeColors.text,
+                                  fontWeight: isSelected ? 600 : 400
+                                }}>
                                   {element.name}
                                 </Typography>
                                 <IconButton 
@@ -1933,47 +1996,67 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                                     handleContextMenu(e, element);
                                   }}
                                   aria-label="Más opciones"
-                                  sx={{ color: isFocused ? themeColors.background : themeColors.text }}
+                                  sx={{ color: isSelected ? themeColors.background : themeColors.text }}
                                 >
                                   <MoreVertIcon fontSize="small" />
                                 </IconButton>
                               </Box>
                               <Collapse in={openFolders[element.id]}>
                                 <Box sx={{ ml: 2 }}>
-                                  {element.files.map((file) => (
-                                    <Box
-                                      key={file.id}
-                                      sx={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        cursor: 'pointer',
-                                        p: 0.5,
-                                        borderRadius: 1,
-                                        color: themeColors.text,
-                                        '&:hover': {
-                                          backgroundColor: themeColors.hover
-                                        }
-                                      }}
-                                      onClick={() => handleFileClick(file)}
-                                      onContextMenu={(e) => handleContextMenu(e, { ...file, parentFolder: element.id })}
-                                      aria-label={`Archivo ${file.name}`}
-                                      onMouseEnter={() => speakOnHover(`Archivo ${file.name}`)}
-                                      onMouseLeave={cancelHoverSpeak}
-                                    >
-                                      <InsertDriveFile sx={{ mr: 1, fontSize: 16, color: themeColors.info }} />
-                                      <Typography variant="caption" sx={{ flex: 1 }}>{file.name}</Typography>
-                                      <IconButton 
-                                        size="small" 
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleContextMenu(e, { ...file, parentFolder: element.id });
+                                  {element.files.map((file) => {
+                                    const fileElements = getNavigableElements();
+                                    const fileIndex = fileElements.findIndex(el => 
+                                      el.type === 'file' && el.id === file.id
+                                    );
+                                    const isFileSelected = selectedIndex === fileIndex;
+                                    const isCurrentChildFile = currentFileId === file.id;
+                                    
+                                    return (
+                                      <Box
+                                        key={file.id}
+                                        sx={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          cursor: 'pointer',
+                                          p: 0.5,
+                                          borderRadius: 1,
+                                          color: themeColors.text,
+                                          backgroundColor: isFileSelected || isCurrentChildFile ? themeColors.hover : 'transparent',
+                                          border: (isFileSelected || isCurrentChildFile) ? `2px solid ${themeColors.accent}` : '2px solid transparent',
+                                          '&:hover': !(isFileSelected || isCurrentChildFile) ? {
+                                            backgroundColor: themeColors.hover
+                                          } : {}
                                         }}
-                                        aria-label="Más opciones"
+                                        onClick={() => handleFileClick(file)}
+                                        onContextMenu={(e) => handleContextMenu(e, { ...file, parentFolder: element.id })}
+                                        aria-label={`Archivo ${file.name}${isCurrentChildFile ? ', actualmente abierto' : ''}`}
+                                        onMouseEnter={() => speakOnHover(`Archivo ${file.name}${isCurrentChildFile ? ', actualmente abierto' : ''}`)}
+                                        onMouseLeave={cancelHoverSpeak}
                                       >
-                                        <MoreVertIcon fontSize="small" />
-                                      </IconButton>
-                                    </Box>
-                                  ))}
+                                        <InsertDriveFile sx={{ 
+                                          mr: 1, 
+                                          fontSize: 16, 
+                                          color: (isFileSelected || isCurrentChildFile) ? themeColors.accent : themeColors.info 
+                                        }} />
+                                        <Typography variant="caption" sx={{ 
+                                          flex: 1,
+                                          fontWeight: (isFileSelected || isCurrentChildFile) ? 600 : 400
+                                        }}>
+                                          {file.name}
+                                        </Typography>
+                                        <IconButton 
+                                          size="small" 
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleContextMenu(e, { ...file, parentFolder: element.id });
+                                          }}
+                                          aria-label="Más opciones"
+                                        >
+                                          <MoreVertIcon fontSize="small" />
+                                        </IconButton>
+                                      </Box>
+                                    );
+                                  })}
                                 </Box>
                               </Collapse>
                             </Box>
@@ -1990,19 +2073,36 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                                 mb: 0.5,
                                 borderRadius: 1,
                                 color: themeColors.text,
-                                backgroundColor: isFocused ? themeColors.accent : 'transparent',
-                                '&:hover': {
-                                  backgroundColor: themeColors.hover
-                                }
+                                backgroundColor: isSelected 
+                                  ? themeColors.accent 
+                                  : isCurrentFile
+                                    ? themeColors.hover 
+                                    : 'transparent',
+                                border: (isSelected || isCurrentFile) ? `2px solid ${themeColors.accent}` : '2px solid transparent',
+                                '&:hover': !(isSelected || isCurrentFile) ? {
+                                  backgroundColor: themeColors.hover,
+                                  border: `2px solid ${themeColors.accent}`
+                                } : {}
                               }}
                               onClick={() => handleFileClick(element)}
                               onContextMenu={(e) => handleContextMenu(e, element)}
-                              aria-label={`Archivo ${element.name}`}
-                              onMouseEnter={() => speakOnHover(`Archivo ${element.name}`)}
+                              aria-label={`Archivo ${element.name}${isCurrentFile ? ', actualmente abierto' : ''}`}
+                              onMouseEnter={() => speakOnHover(`Archivo ${element.name}${isCurrentFile ? ', actualmente abierto' : ''}`)}
                               onMouseLeave={cancelHoverSpeak}
                             >
-                              <InsertDriveFile sx={{ mr: 1, color: isFocused ? themeColors.background : themeColors.info }} />
-                              <Typography variant="body2" sx={{ flex: 1, color: isFocused ? themeColors.background : themeColors.text }}>
+                              <InsertDriveFile sx={{ 
+                                mr: 1, 
+                                color: isSelected 
+                                  ? themeColors.background 
+                                  : isCurrentFile
+                                    ? themeColors.accent 
+                                    : themeColors.info 
+                              }} />
+                              <Typography variant="body2" sx={{ 
+                                flex: 1, 
+                                color: isSelected ? themeColors.background : themeColors.text,
+                                fontWeight: (isSelected || isCurrentFile) ? 600 : 400
+                              }}>
                                 {element.name}
                               </Typography>
                               <IconButton 
@@ -2012,7 +2112,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                                   handleContextMenu(e, element);
                                 }}
                                 aria-label="Más opciones"
-                                sx={{ color: isFocused ? themeColors.background : themeColors.text }}
+                                sx={{ color: isSelected ? themeColors.background : themeColors.text }}
                               >
                                 <MoreVertIcon fontSize="small" />
                               </IconButton>
@@ -2068,7 +2168,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                     }}>
                       <List dense sx={{ p: 0 }}>
                         {codeStructure.map((item, index) => {
-                          const isFocused = focusedSection === 'structure' && focusedIndex === index;
+                          const isFocused = focusedSection === 'structure' && selectedIndex === index;
                           
                           return (
                             <ListItem
@@ -2183,7 +2283,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                           sx={{ 
                             color: themeColors.text,
                             borderColor: themeColors.border,
-                            backgroundColor: focusedSection === 'buttons' && focusedIndex === 0 ? themeColors.hover : 'transparent',
+                            backgroundColor: focusedSection === 'buttons' && selectedIndex === 0 ? themeColors.hover : 'transparent',
                             '&:hover': {
                               backgroundColor: themeColors.hover,
                               borderColor: themeColors.accent
@@ -2206,7 +2306,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                           sx={{ 
                             color: themeColors.text,
                             borderColor: themeColors.border,
-                            backgroundColor: focusedSection === 'buttons' && focusedIndex === 1 ? themeColors.hover : 'transparent',
+                            backgroundColor: focusedSection === 'buttons' && selectedIndex === 1 ? themeColors.hover : 'transparent',
                             '&:hover': {
                               backgroundColor: themeColors.hover,
                               borderColor: themeColors.accent
@@ -2232,7 +2332,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                           sx={{ 
                             color: themeColors.text,
                             borderColor: themeColors.border,
-                            backgroundColor: focusedSection === 'buttons' && focusedIndex === 2 ? themeColors.hover : 'transparent',
+                            backgroundColor: focusedSection === 'buttons' && selectedIndex === 2 ? themeColors.hover : 'transparent',
                             '&:hover': {
                               backgroundColor: themeColors.hover,
                               borderColor: themeColors.accent
@@ -2255,7 +2355,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                           sx={{ 
                             color: themeColors.text,
                             borderColor: themeColors.border,
-                            backgroundColor: focusedSection === 'buttons' && focusedIndex === 3 ? themeColors.hover : 'transparent',
+                            backgroundColor: focusedSection === 'buttons' && selectedIndex === 3 ? themeColors.hover : 'transparent',
                             '&:hover': {
                               backgroundColor: themeColors.hover,
                               borderColor: themeColors.accent
@@ -2290,9 +2390,8 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
 
                     {/* Renderizar carpetas y archivos */}
                     {getNavigableElements().map((element, index) => {
-                      if (focusedSection !== 'files') return null;
-                      
-                      const isFocused = focusedIndex === index;
+                      const isFocused = focusedSection === 'files' && selectedIndex === index;
+                      const isCurrentFile = element.type === 'file' && currentFileId === element.id;
                       
                       if (element.type === 'folder') {
                         return (
@@ -2305,20 +2404,36 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                                 p: 0.5,
                                 borderRadius: 1,
                                 color: themeColors.text,
-                                backgroundColor: isFocused ? themeColors.accent : 'transparent',
-                                '&:hover': {
+                                backgroundColor: isFocused 
+                                  ? themeColors.accent 
+                                  : 'transparent',
+                                border: isFocused ? `2px solid ${themeColors.accent}` : '2px solid transparent',
+                                '&:hover': !isFocused ? {
                                   backgroundColor: themeColors.hover
-                                }
+                                } : {}
                               }}
                               onClick={() => toggleFolder(element.id)}
                               onContextMenu={(e) => handleContextMenu(e, element)}
                               aria-label={`Carpeta ${element.name}, ${openFolders[element.id] ? 'expandida' : 'colapsada'}, contiene ${element.files.length} archivos`}
-                              onMouseEnter={() => speakOnHover(`Carpeta ${element.name}, ${openFolders[element.id] ? 'expandida' : 'colapsada'}, contiene ${element.files.length} archivos`)}
+                              onMouseEnter={() => !isFocused && speakOnHover(`Carpeta ${element.name}, ${openFolders[element.id] ? 'expandida' : 'colapsada'}, contiene ${element.files.length} archivos`)}
                               onMouseLeave={cancelHoverSpeak}
                             >
-                              {openFolders[element.id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                              <Folder sx={{ mr: 1, color: isFocused ? themeColors.background : themeColors.accent }} />
-                              <Typography variant="body2" sx={{ flex: 1, color: isFocused ? themeColors.background : themeColors.text }}>
+                              {openFolders[element.id] ? (
+                                <ExpandLessIcon sx={{ color: isFocused ? themeColors.background : themeColors.accent }} />
+                              ) : (
+                                <ExpandMoreIcon sx={{ color: isFocused ? themeColors.background : themeColors.accent }} />
+                              )}
+                              <Folder sx={{ 
+                                mr: 1, 
+                                color: isFocused 
+                                  ? themeColors.background 
+                                  : themeColors.accent 
+                              }} />
+                              <Typography variant="body2" sx={{ 
+                                flex: 1, 
+                                color: isFocused ? themeColors.background : themeColors.text,
+                                fontWeight: isFocused ? 600 : 400
+                              }}>
                                 {element.name}
                               </Typography>
                               <IconButton 
@@ -2335,40 +2450,71 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                             </Box>
                             <Collapse in={openFolders[element.id]}>
                               <Box sx={{ ml: 2 }}>
-                                {element.files.map((file) => (
-                                  <Box
-                                    key={file.id}
-                                    sx={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      cursor: 'pointer',
-                                      p: 0.5,
-                                      borderRadius: 1,
-                                      color: themeColors.text,
-                                      '&:hover': {
-                                        backgroundColor: themeColors.hover
-                                      }
-                                    }}
-                                    onClick={() => handleFileClick(file)}
-                                    onContextMenu={(e) => handleContextMenu(e, { ...file, parentFolder: element.id })}
-                                    aria-label={`Archivo ${file.name}`}
-                                    onMouseEnter={() => speakOnHover(`Archivo ${file.name}`)}
-                                    onMouseLeave={cancelHoverSpeak}
-                                  >
-                                    <InsertDriveFile sx={{ mr: 1, fontSize: 16, color: themeColors.info }} />
-                                    <Typography variant="caption" sx={{ flex: 1 }}>{file.name}</Typography>
-                                    <IconButton 
-                                      size="small" 
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleContextMenu(e, { ...file, parentFolder: element.id });
+                                {element.files.map((file) => {
+                                  // CORRECCIÓN: Buscar el índice del archivo en getNavigableElements
+                                  const fileElements = getNavigableElements();
+                                  const fileIndex = fileElements.findIndex(el => 
+                                    el.type === 'file' && el.id === file.id && el.parentFolder === element.id
+                                  );
+                                  const isFileFocused = focusedSection === 'files' && selectedIndex === fileIndex;
+                                  const isCurrentChildFile = currentFileId === file.id;
+                                  
+                                  return (
+                                    <Box
+                                      key={file.id}
+                                      sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        cursor: 'pointer',
+                                        p: 0.5,
+                                        borderRadius: 1,
+                                        color: themeColors.text,
+                                        backgroundColor: isFileFocused 
+                                          ? themeColors.accent 
+                                          : isCurrentChildFile 
+                                            ? themeColors.hover 
+                                            : 'transparent',
+                                        border: (isFileFocused || isCurrentChildFile) ? `2px solid ${themeColors.accent}` : '2px solid transparent',
+                                        '&:hover': !(isFileFocused || isCurrentChildFile) ? {
+                                          backgroundColor: themeColors.hover
+                                        } : {}
                                       }}
-                                      aria-label="Más opciones"
+                                      onClick={() => handleFileClick(file)}
+                                      onContextMenu={(e) => handleContextMenu(e, { ...file, parentFolder: element.id })}
+                                      aria-label={`Archivo ${file.name}${isCurrentChildFile ? ', actualmente abierto' : ''}`}
+                                      onMouseEnter={() => !(isFileFocused || isCurrentChildFile) && speakOnHover(`Archivo ${file.name}${isCurrentChildFile ? ', actualmente abierto' : ''}`)}
+                                      onMouseLeave={cancelHoverSpeak}
                                     >
-                                      <MoreVertIcon fontSize="small" />
-                                    </IconButton>
-                                  </Box>
-                                ))}
+                                      <InsertDriveFile sx={{ 
+                                        mr: 1, 
+                                        fontSize: 16, 
+                                        color: isFileFocused 
+                                          ? themeColors.background 
+                                          : isCurrentChildFile 
+                                            ? themeColors.accent 
+                                            : themeColors.info 
+                                      }} />
+                                      <Typography variant="caption" sx={{ 
+                                        flex: 1, 
+                                        color: isFileFocused ? themeColors.background : themeColors.text,
+                                        fontWeight: (isFileFocused || isCurrentChildFile) ? 600 : 400 
+                                      }}>
+                                        {file.name}
+                                      </Typography>
+                                      <IconButton 
+                                        size="small" 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleContextMenu(e, { ...file, parentFolder: element.id });
+                                        }}
+                                        aria-label="Más opciones"
+                                        sx={{ color: isFileFocused ? themeColors.background : themeColors.text }}
+                                      >
+                                        <MoreVertIcon fontSize="small" />
+                                      </IconButton>
+                                    </Box>
+                                  );
+                                })}
                               </Box>
                             </Collapse>
                           </Box>
@@ -2385,19 +2531,35 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                               mb: 0.5,
                               borderRadius: 1,
                               color: themeColors.text,
-                              backgroundColor: isFocused ? themeColors.accent : 'transparent',
-                              '&:hover': {
+                              backgroundColor: isFocused 
+                                ? themeColors.accent 
+                                : isCurrentFile
+                                  ? themeColors.hover 
+                                  : 'transparent',
+                              border: (isFocused || isCurrentFile) ? `2px solid ${themeColors.accent}` : '2px solid transparent',
+                              '&:hover': !(isFocused || isCurrentFile) ? {
                                 backgroundColor: themeColors.hover
-                              }
+                              } : {}
                             }}
                             onClick={() => handleFileClick(element)}
                             onContextMenu={(e) => handleContextMenu(e, element)}
-                            aria-label={`Archivo ${element.name}`}
-                            onMouseEnter={() => speakOnHover(`Archivo ${element.name}`)}
+                            aria-label={`Archivo ${element.name}${isCurrentFile ? ', actualmente abierto' : ''}`}
+                            onMouseEnter={() => !(isFocused || isCurrentFile) && speakOnHover(`Archivo ${element.name}${isCurrentFile ? ', actualmente abierto' : ''}`)}
                             onMouseLeave={cancelHoverSpeak}
                           >
-                            <InsertDriveFile sx={{ mr: 1, color: isFocused ? themeColors.background : themeColors.info }} />
-                            <Typography variant="body2" sx={{ flex: 1, color: isFocused ? themeColors.background : themeColors.text }}>
+                            <InsertDriveFile sx={{ 
+                              mr: 1, 
+                              color: isFocused 
+                                ? themeColors.background 
+                                : isCurrentFile
+                                  ? themeColors.accent 
+                                  : themeColors.info 
+                            }} />
+                            <Typography variant="body2" sx={{ 
+                              flex: 1, 
+                              color: isFocused ? themeColors.background : themeColors.text,
+                              fontWeight: (isFocused || isCurrentFile) ? 600 : 400
+                            }}>
                               {element.name}
                             </Typography>
                             <IconButton 
@@ -2424,7 +2586,6 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
       )}
 
       {/* Menú contextual */}
-      {/* Menú contextual con opción de guardar */}
       <Menu
         open={contextMenu !== null}
         onClose={handleCloseContextMenu}
@@ -2453,7 +2614,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
             onMouseEnter={() => speakOnHover('Abrir archivo en el editor')}
             onMouseLeave={cancelHoverSpeak}
           >
-            <FolderOpenIcon sx={{ mr: 1, fontSize: 18 }} />
+            {/* <FolderOpenIcon sx={{ mr: 1, fontSize: 18 }} /> */}
             Abrir
           </MenuItem>
         )}
@@ -2482,7 +2643,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
             onMouseEnter={() => speakOnHover('Expandir o colapsar carpeta')}
             onMouseLeave={cancelHoverSpeak}
           >
-            <FolderOpenIcon sx={{ mr: 1, fontSize: 18 }} />
+            {/* <FolderOpenIcon sx={{ mr: 1, fontSize: 18 }} /> */}
             {openFolders[selectedItem.id] ? 'Colapsar' : 'Expandir'}
           </MenuItem>
         )}
@@ -2493,7 +2654,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
           onMouseEnter={() => speakOnHover('Renombrar')}
           onMouseLeave={cancelHoverSpeak}
         >
-          <EditIcon sx={{ mr: 1, fontSize: 18 }} />
+          {/* <EditIcon sx={{ mr: 1, fontSize: 18 }} /> */}
           Renombrar
         </MenuItem>
         
@@ -2503,7 +2664,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
           onMouseEnter={() => speakOnHover('Eliminar')}
           onMouseLeave={cancelHoverSpeak}
         >
-          <DeleteIcon sx={{ mr: 1, fontSize: 18 }} />
+          {/* <DeleteIcon sx={{ mr: 1, fontSize: 18 }} /> */}
           Eliminar
         </MenuItem>
         
@@ -2514,7 +2675,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
             onMouseEnter={() => speakOnHover('Descargar archivo a tu computadora')}
             onMouseLeave={cancelHoverSpeak}
           >
-            <DownloadIcon sx={{ mr: 1, fontSize: 18 }} />
+            {/* <DownloadIcon sx={{ mr: 1, fontSize: 18 }} /> */}
             Descargar
           </MenuItem>
         )}
@@ -2587,6 +2748,7 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
             variant="contained"
             sx={{
               backgroundColor: themeColors.accent,
+              color: themeColors.background,
               '&:hover': {
                 backgroundColor: themeColors.accent,
                 filter: 'brightness(0.9)'
@@ -2636,6 +2798,15 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
                 },
                 '&:hover fieldset': {
                   borderColor: themeColors.accent
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: themeColors.accent
+                }
+              },
+              '& .MuiInputLabel-root': {
+                color: themeColors.textSecondary,
+                '&.Mui-focused': {
+                  color: themeColors.accent
                 }
               }
             }}
@@ -2645,7 +2816,14 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
           <Button onClick={() => setRenameDialogOpen(false)} sx={{ color: themeColors.textSecondary }}>
             Cancelar
           </Button>
-          <Button onClick={confirmRename} variant="contained" sx={{ backgroundColor: themeColors.accent }}>
+          <Button onClick={confirmRename} variant="contained" sx={{
+              backgroundColor: themeColors.accent,
+              color: themeColors.background,
+              '&:hover': {
+                backgroundColor: themeColors.accent,
+                filter: 'brightness(0.9)'
+              }
+            }}>
             Renombrar
           </Button>
         </DialogActions>
@@ -2733,6 +2911,6 @@ function FileManager({ contrast, codeStructure, onFileOpen, collapsed, onToggleC
       </Dialog>
     </Box>
   );
-};
+});
 
 export default FileManager;

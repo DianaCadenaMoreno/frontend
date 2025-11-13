@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Box, TextField, Typography } from '@mui/material';
 
-function Terminal({ debug, contrast, output, pid, textEditorRef }) { // Cambiar 'ref' por 'textEditorRef'
+const Terminal = React.forwardRef(({ debug, contrast, output, pid, textEditorRef }, ref) => {
   const [history, setHistory] = useState([]); 
   const [input, setInput] = useState(''); 
   const terminalRef = useRef(null);
@@ -196,6 +196,7 @@ function Terminal({ debug, contrast, output, pid, textEditorRef }) { // Cambiar 
       </Box>
     </Box>
   );
-}
+});
 
+Terminal.displayName = 'Terminal';
 export default Terminal;

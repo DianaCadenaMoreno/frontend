@@ -17,7 +17,7 @@ import { useScreenReader } from '../contexts/ScreenReaderContext';
 
 const menuItems = {
   archivos: ['Nuevo archivo de texto', 'Nuevo archivo', 'Abrir un archivo', 'Abrir una carpeta'],
-  ajustes: ['Paleta de comandos', 'Apariencia', 'Editor de layout', 'Consola de Debug'],
+  ajustes: ['Apariencia'],
   ayuda: ['Bienvenida', 'Ver todos los comandos', 'Documentación', 'Manual de usuario'],
 };
 
@@ -46,19 +46,22 @@ const Navbar = React.forwardRef(({ onOpenAppearanceModal }, ref) => {
         }
       },
       openArchivosMenu: () => {
-        setAnchorElArchivos(navbarRef.current);
+        const anchor = menuRefs.current['archivos'] || navbarRef.current;
+        setAnchorElArchivos(anchor);
         setSelectedMenu('archivos');
         setFocusedMenuItem(0);
         speak('Menú archivos abierto. 4 opciones disponibles. Usa las flechas arriba y abajo para navegar.');
       },
       openAjustesMenu: () => {
-        setAnchorElAjustes(navbarRef.current);
+        const anchor = menuRefs.current['ajustes'] || navbarRef.current;
+        setAnchorElAjustes(anchor);
         setSelectedMenu('ajustes');
         setFocusedMenuItem(0);
         speak('Menú ajustes abierto. 4 opciones disponibles. Usa las flechas arriba y abajo para navegar.');
       },
       openAyudaMenu: () => {
-        setAnchorElAyuda(navbarRef.current);
+        const anchor = menuRefs.current['ayuda'] || navbarRef.current;
+        setAnchorElAyuda(anchor);
         setSelectedMenu('ayuda');
         setFocusedMenuItem(0);
         speak('Menú ayuda abierto. 4 opciones disponibles. Usa las flechas arriba y abajo para navegar.');
@@ -85,14 +88,15 @@ const Navbar = React.forwardRef(({ onOpenAppearanceModal }, ref) => {
       }
     },
     openArchivosMenu: () => {
-      setAnchorElArchivos(navbarRef.current);
+     const anchor = menuRefs.current['archivos'] || navbarRef.current;
+      setAnchorElArchivos(anchor);
       setSelectedMenu('archivos');
       setFocusedMenuItem(0);
     },
   }));
 
-  const handleMenuOpen = (setter, menuName) => {
-    setter(navbarRef.current);
+  const handleMenuOpen = (anchor, setter, menuName) => {
+    setter(anchor);
     setSelectedMenu(menuName);
     setFocusedMenuItem(0);
     
@@ -126,7 +130,7 @@ const Navbar = React.forwardRef(({ onOpenAppearanceModal }, ref) => {
     }
   };
 
-  const handleKeyDown = (event) => {
+   const handleKeyDown = (event) => {
     const currentAnchor = getCurrentAnchor();
     const currentMenuItems = menuItems[selectedMenu];
     
@@ -159,9 +163,10 @@ const Navbar = React.forwardRef(({ onOpenAppearanceModal }, ref) => {
           
           handleMenuClose(getCurrentSetter());
           setTimeout(() => {
-            if (nextMenu === 'archivos') handleMenuOpen(setAnchorElArchivos, 'archivos');
-            else if (nextMenu === 'ajustes') handleMenuOpen(setAnchorElAjustes, 'ajustes');
-            else handleMenuOpen(setAnchorElAyuda, 'ayuda');
+            const anchor = menuRefs.current[nextMenu] || navbarRef.current;
+            if (nextMenu === 'archivos') handleMenuOpen(anchor, setAnchorElArchivos, 'archivos');
+            else if (nextMenu === 'ajustes') handleMenuOpen(anchor, setAnchorElAjustes, 'ajustes');
+            else handleMenuOpen(anchor, setAnchorElAyuda, 'ayuda');
           }, 100);
           break;
           
@@ -173,9 +178,10 @@ const Navbar = React.forwardRef(({ onOpenAppearanceModal }, ref) => {
           
           handleMenuClose(getCurrentSetter());
           setTimeout(() => {
-            if (prevMenu === 'archivos') handleMenuOpen(setAnchorElArchivos, 'archivos');
-            else if (prevMenu === 'ajustes') handleMenuOpen(setAnchorElAjustes, 'ajustes');
-            else handleMenuOpen(setAnchorElAyuda, 'ayuda');
+            const anchor = menuRefs.current[prevMenu] || navbarRef.current;
+            if (prevMenu === 'archivos') handleMenuOpen(anchor, setAnchorElArchivos, 'archivos');
+            else if (prevMenu === 'ajustes') handleMenuOpen(anchor, setAnchorElAjustes, 'ajustes');
+            else handleMenuOpen(anchor, setAnchorElAyuda, 'ayuda');
           }, 100);
           break;
           
@@ -226,9 +232,10 @@ const Navbar = React.forwardRef(({ onOpenAppearanceModal }, ref) => {
         case ' ':
         case 'ArrowDown':
           event.preventDefault();
-          if (selectedMenu === 'archivos') handleMenuOpen(setAnchorElArchivos, 'archivos');
-          else if (selectedMenu === 'ajustes') handleMenuOpen(setAnchorElAjustes, 'ajustes');
-          else handleMenuOpen(setAnchorElAyuda, 'ayuda');
+          const anchor = menuRefs.current[selectedMenu] || navbarRef.current;
+          if (selectedMenu === 'archivos') handleMenuOpen(anchor, setAnchorElArchivos, 'archivos');
+          else if (selectedMenu === 'ajustes') handleMenuOpen(anchor, setAnchorElAjustes, 'ajustes');
+          else handleMenuOpen(anchor, setAnchorElAyuda, 'ayuda');
           break;
           
         default:
@@ -293,12 +300,13 @@ const Navbar = React.forwardRef(({ onOpenAppearanceModal }, ref) => {
             const anchorEl = key === 'archivos' ? anchorElArchivos : 
                            key === 'ajustes' ? anchorElAjustes : anchorElAyuda;
             const setter = key === 'archivos' ? setAnchorElArchivos :
-                          key === 'ajustes' ? setAnchorElAjustes : setAnchorElAyuda;
+                          key === 'ajustes' ? setAnchorElAjustes : setAnchorElAyuda; // <-- CORREGIR: usar funciones set, no estados
             
             return (
               <React.Fragment key={key}>
                 <Button 
-                  onClick={() => handleMenuOpen(setter, key)}
+                  ref={(el) => (menuRefs.current[key] = el)}
+                  onClick={(e) => handleMenuOpen(e.currentTarget, setter, key)}
                   onMouseEnter={() => speakOnHover(`Menú ${key}`)}
                   onMouseLeave={cancelHoverSpeak}
                   sx={{ 
@@ -318,14 +326,13 @@ const Navbar = React.forwardRef(({ onOpenAppearanceModal }, ref) => {
                 </Button>
                 <Popover
                   sx={{ 
-                    mt: '45px',
                     '& .MuiPaper-root': {
                       backgroundColor: '#101B23',
                     }
                   }}
                   id={`menu-appbar-${key}`}
                   anchorEl={anchorEl}
-                  anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
                   transformOrigin={{ vertical: 'top', horizontal: 'left' }}
                   open={Boolean(anchorEl)}
                   onClose={() => handleMenuClose(setter)}
