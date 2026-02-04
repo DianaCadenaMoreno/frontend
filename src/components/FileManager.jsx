@@ -26,7 +26,7 @@ import remarkGfm from 'remark-gfm';
 import '../styles/FileManager.css'
 import { useScreenReader } from '../contexts/ScreenReaderContext';
 import { useAppNavigation } from '../contexts/NavigationContext';
-import { useInteractionMode } from '../contexts/InteractionModeContext';
+// import { useInteractionMode } from '../contexts/InteractionModeContext';
 
 // Constantes para límites de almacenamiento
 const MAX_FILES = 50;
@@ -34,7 +34,7 @@ const MAX_FOLDERS = 20;
 const MAX_STORAGE_SIZE = 5 * 1024 * 1024; // 5MB en bytes
 
 const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, collapsed, onToggleCollapse,screenReaderEnabled,currentFileId, onSaveFile, ...props }, ref) => {
-  
+
   const [files, setFiles] = React.useState(() => JSON.parse(localStorage.getItem('files')) || []);
   const [folders, setFolders] = React.useState(() => JSON.parse(localStorage.getItem('folders')) || []);
   const [contextMenu, setContextMenu] = React.useState(null);
@@ -50,35 +50,27 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
   const { isListening, transcript, setIsListening } = useSpeechRecognition();
   const [isCodeStructureOpen, setIsCodeStructureOpen] = React.useState(true);
   const [focusedMessageIndex, setFocusedMessageIndex] = React.useState(-1);
-  const [isKeyboardNavigation, setIsKeyboardNavigation] = React.useState(false);
-  const [focusedCodeButton, setFocusedCodeButton] = React.useState(null);
+  const [copiedIndex, setCopiedIndex] = React.useState(null);
   const chatContainerRef = React.useRef(null);
-  const messageRefs = React.useRef({});
   const inputRef = React.useRef(null);
-  // Verificar si hay contenido en la estructura del código
   const hasCodeStructure = codeStructure && codeStructure.length > 0;
   const [lastTypedWord, setLastTypedWord] = React.useState('');
   const typingTimeoutRef = React.useRef(null);
-  const [focusedSection, setFocusedSection] = React.useState('files'); 
   const fileManagerRef = React.useRef(null);
-  const lastMessageRef = React.useRef(null);
   const { enabled, speak, speakOnHover, speakOnFocus, cancelHoverSpeak, announce, stop } = useScreenReader();
   const [renameDialogOpen, setRenameDialogOpen] = React.useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
-  const [itemToModify, setItemToModify] = React.useState(null);
   const [storageWarningOpen, setStorageWarningOpen] = React.useState(false);
   const [storageWarningMessage, setStorageWarningMessage] = React.useState('');
   const {registerComponent, unregisterComponent, setFocusedComponent } = useAppNavigation();
   const fileManagerContainerRef = React.useRef(null);
   const [isFileManagerFocused, setIsFileManagerFocused] = React.useState(false);
-  // const [selectedIndex, setFocusedIndex] = React.useState(0);
-  // const [selectedElement, setSelectedElement] = React.useState(null);
-  const [selectedIndex, setSelectedIndex] = React.useState(0)
-  const { isKeyboardMode } = useInteractionMode();
+  const [selectedIndex, setSelectedIndex] = React.useState(0);
   const createDialogInputRef = React.useRef(null);
   const renameDialogInputRef = React.useRef(null);
-  const [lastInteractionWasKeyboard, setLastInteractionWasKeyboard] = React.useState(false);
-
+  const [extensionErrorOpen, setExtensionErrorOpen] = React.useState(false);
+  const chatPanelRef = React.useRef(null);
+  const [focusedCodeIndex, setFocusedCodeIndex] = React.useState(-1);
 
   // Función para obtener colores del tema
   const getThemeColors = (contrast) => {
@@ -136,14 +128,12 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     }
   };
 
-  const themeColors = getThemeColors(contrast);
+  const validateFileExtension = (fileName) => {
+    const ext = fileName.split('.').pop().toLowerCase();
+    return ext === 'txt' || ext === 'py';
+  };
 
-  // Calcular uso de almacenamiento
-  const calculateStorageUsage = React.useCallback(() => {
-    const filesSize = new Blob([JSON.stringify(files)]).size;
-    const foldersSize = new Blob([JSON.stringify(folders)]).size;
-    return filesSize + foldersSize;
-  }, [files, folders]);
+  const themeColors = getThemeColors(contrast);
 
   // Verificar límites de almacenamiento
   const checkStorageLimits = React.useCallback((newFiles, newFolders) => {
@@ -266,7 +256,7 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     }, 1500);
   }, [speak]);
 
-   // Efecto para enfocar y anunciar cuando se abre el diálogo de crear
+  // Efecto para enfocar y anunciar cuando se abre el diálogo de crear
   React.useEffect(() => {
     if (dialogOpen) {
       // Detener navegación en el gestor de archivos
@@ -375,6 +365,22 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     const itemId = selectedItem.id;
 
     if (itemType === 'file') {
+      // Determinar extensión para archivos
+      let fileName = newName.trim();
+      
+      // Si no tiene extensión, mantener la extensión original
+      if (!fileName.includes('.')) {
+        const originalExt = selectedItem.name.split('.').pop();
+        fileName = `${fileName}.${originalExt}`;
+      }
+      
+      // Validar extensión
+      if (!validateFileExtension(fileName)) {
+        speak('Solo se permiten archivos con extensión .txt o .py');
+        setExtensionErrorOpen(true);
+        return;
+      }
+
       // Verificar si es un archivo de carpeta o archivo raíz
       if (selectedItem.parentFolder) {
         setFolders(prev => prev.map(folder => {
@@ -382,7 +388,7 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
             return {
               ...folder,
               files: folder.files.map(f => 
-                f.id === itemId ? { ...f, name: newName } : f
+                f.id === itemId ? { ...f, name: fileName } : f
               )
             };
           }
@@ -390,10 +396,10 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
         }));
       } else {
         setFiles(prev => prev.map(f => 
-          f.id === itemId ? { ...f, name: newName } : f
+          f.id === itemId ? { ...f, name: fileName } : f
         ));
       }
-      speak(`Archivo renombrado a ${newName}`);
+      speak(`Archivo renombrado a ${fileName}`);
     } else {
       setFolders(prev => prev.map(f => 
         f.id === itemId ? { ...f, name: newName } : f
@@ -404,7 +410,7 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     setRenameDialogOpen(false);
     setNewName('');
     setSelectedItem(null);
-  }, [selectedItem, newName, speak]);
+  }, [selectedItem, newName, speak, setFolders, setFiles]);
 
   // Función para eliminar
   const handleDelete = React.useCallback(() => {
@@ -465,357 +471,532 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     speak(`Archivo ${selectedItem.name} descargado correctamente`);
   }, [selectedItem, speak]);
 
-  // Detener la lectura cuando el usuario cambia de posición
-  React.useEffect(() => {
-    const handleUserInteraction = () => {
-      if (window.speechSynthesis.speaking) {
-        stop();
-      }
-    };
-
-    // Escuchar eventos de teclado y mouse que indiquen cambio de foco
-    document.addEventListener('keydown', handleUserInteraction);
-    document.addEventListener('click', handleUserInteraction);
-    
-    return () => {
-      document.removeEventListener('keydown', handleUserInteraction);
-      document.removeEventListener('click', handleUserInteraction);
-    };
-  }, [stop]);
-
   // Obtener elementos navegables según la sección actual
   const getNavigableElements = React.useCallback(() => {
   if (tabIndex === 1) {
-    // En el chat, no hay navegación de elementos
     return [];
   }
 
-  switch (focusedSection) {
-    case 'buttons':
-      return [
-        { type: 'button', action: 'createFile' },
-        { type: 'button', action: 'createFolder' },
-        { type: 'button', action: 'openFile' },
-        { type: 'button', action: 'openFolder' }
-      ];
-    
-    case 'files':
-      const elements = [];
-      
-      // Agregar carpetas
-      folders.forEach(folder => {
-        elements.push({ ...folder, type: 'folder' });
-        // Si la carpeta está abierta, agregar sus archivos
-        if (openFolders[folder.id]) {
-          folder.files.forEach(file => {
-            elements.push({ ...file, type: 'file', parentFolder: folder.id });
-          });
-        }
+  const elements = [];
+  
+  // Agregar carpetas
+  folders.forEach(folder => {
+    if (folder && folder.id && folder.name) {
+      elements.push({ 
+        ...folder, 
+        type: 'folder',
+        files: folder.files || [] // Asegurar que files existe
       });
       
-      // Agregar archivos sin carpeta
-      files.forEach(file => {
-        elements.push({ ...file, type: 'file' });
+      // Si la carpeta está abierta, agregar sus archivos
+      if (openFolders[folder.id] && folder.files && Array.isArray(folder.files)) {
+        folder.files.forEach(file => {
+          if (file && file.id && file.name) {
+            elements.push({ 
+              ...file, 
+              type: 'file', 
+              parentFolder: folder.id 
+            });
+          }
+        });
+      }
+    }
+  });
+  
+  // Agregar archivos sin carpeta
+  files.forEach(file => {
+    if (file && file.id && file.name) {
+      elements.push({ ...file, type: 'file' });
+    }
+  });
+  
+  return elements;
+}, [folders, files, openFolders, tabIndex]);
+
+  // Función para extraer bloques de código
+  const extractCodeBlocks = React.useCallback((content) => {
+    const codeBlockRegex = /```(\w+)?\n?([\s\S]*?)```/g;
+    const blocks = [];
+    let match;
+    
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      blocks.push({
+        language: match[1] || 'text',
+        content: match[2].trim()
       });
-      
-      return elements;
+    }
     
-    case 'structure':
-      return codeStructure || [];
-    
-    default:
-      return [];
-  }
-}, [focusedSection, folders, files, codeStructure, openFolders, tabIndex]);
+    return blocks;
+  }, []);
 
-  // Obtener descripción del elemento enfocado
-  const getFocusedElementDescription = React.useCallback(() => {
-    const elements = getNavigableElements();
-    
-    if (tabIndex === 1) {
-      return 'Chat con copiloto. Use las teclas Tab y Shift+Tab para navegar entre los controles';
-    }
+  // Componente ChatHistory
+  const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, focusedCodeIndex, copiedIndex }) => {
+    return (
+      <div>
+        {chatHistory.map((message, messageIndex) => {
+          const content = typeof message.content === 'string' ? message.content : String(message.content || '');
+          const isFocused = focusedMessageIndex === messageIndex;
+          const codeBlocks = extractCodeBlocks(content);
 
-    if (focusedSection === 'buttons') {
-      const buttonNames = {
-        createFile: 'Botón: Crear nuevo archivo de texto',
-        createFolder: 'Botón: Crear nueva carpeta',
-        openFile: 'Botón: Abrir archivo desde el sistema',
-        openFolder: 'Botón: Abrir carpeta desde el sistema'
-      };
-      return buttonNames[elements[selectedIndex]] || '';
-    }
+          return (
+            <div
+              key={messageIndex}
+              tabIndex={isFocused ? 0 : -1}
+              role="article"
+              aria-label={`Mensaje ${messageIndex + 1} de ${chatHistory.length}. ${message.role === "user" ? "Tu mensaje" : "Respuesta del copiloto"}${codeBlocks.length > 0 ? `. Contiene ${codeBlocks.length} bloque${codeBlocks.length > 1 ? 's' : ''} de código` : ''}`}
+              style={{
+                marginBottom: "16px",
+                padding: '12px',
+                borderRadius: '8px',
+                backgroundColor: isFocused ? themeColors.hover : 'transparent',
+                border: isFocused ? `3px solid ${themeColors.accent}` : '2px solid transparent',
+                outline: 'none',
+                position: 'relative'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <Typography style={{
+                  color: themeColors.text,
+                  fontWeight: 700,
+                  fontSize: '0.95rem'
+                }}>
+                  {message.role === "user" ? "Tú" : "Copiloto"}
+                  {codeBlocks.length > 0 && (
+                    <span style={{
+                      marginLeft: '8px',
+                      fontSize: '0.7rem',
+                      backgroundColor: themeColors.accent,
+                      color: 'white',
+                      padding: '2px 6px',
+                      borderRadius: '3px'
+                    }}>
+                      {codeBlocks.length} código{codeBlocks.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </Typography>
+              </div>
 
-    if (focusedSection === 'files') {
-      const element = elements[selectedIndex];
-      if (!element) return '';
-      
-      if (element.type === 'folder') {
-        const isOpen = openFolders[element.id];
-        return `Carpeta ${element.name}, ${isOpen ? 'expandida' : 'colapsada'}, contiene ${element.files.length} archivos. Presione Enter para ${isOpen ? 'colapsar' : 'expandir'}. Presione M para abrir menú de opciones`;
-      } else {
-        const ext = element.name.split('.').pop().toLowerCase();
-        const canOpen = ext === 'py' || ext === 'txt';
-        return `Archivo ${element.name}. ${canOpen ? 'Presione Enter para abrir en el editor.' : 'Este archivo no puede ser abierto en el editor.'} Presione M para menú de opciones: renombrar, eliminar o descargar`;
-      }
-    }
+              <ReactMarkdown
+                children={content}
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  p: ({ node, ...props }) => (
+                    <Typography
+                      {...props}
+                      style={{
+                        color: themeColors.text,
+                        marginBottom: "8px",
+                        lineHeight: "1.5",
+                        fontSize: '0.9rem'
+                      }}
+                    />
+                  ),
+                  code: ({ node, inline, className, children, ...props }) => {
+                    const match = /language-(\w+)/.exec(className || '');
+                    const language = match?.[1]?.toLowerCase() || null;
 
-    if (focusedSection === 'structure') {
-      const element = elements[selectedIndex];
-      if (!element) return '';
-      return `${element.type} ${element.name || 'sin nombre'}, desde línea ${element.line} hasta línea ${element.end_line}`;
-    }
+                    if (inline || language !== 'python') {
+                      return (
+                        <code
+                          {...props}
+                          style={{
+                            backgroundColor: themeColors.surface,
+                            color: themeColors.accent,
+                            padding: '2px 6px',
+                            borderRadius: '3px',
+                            fontSize: '0.85em',
+                            fontFamily: 'Consolas, Monaco, "Courier New", monospace'
+                          }}
+                        >
+                          {children}
+                        </code>
+                      );
+                    }
 
-    return '';
-  }, [focusedSection, selectedIndex, getNavigableElements, openFolders, tabIndex]);
 
-  // Manejar navegación por teclado
-  const handleKeyDown = React.useCallback((e) => {
-    if (collapsed || tabIndex === 1) return;
+                    // Encontrar el índice de este bloque de código
+                    const codeContent = String(children).trim();
+                    const blockIndex = codeBlocks.findIndex(block => block.content === codeContent);
+                    const isCodeFocused = isFocused && focusedCodeIndex === blockIndex;
+                    const isCopied = copiedIndex === `${messageIndex}-${blockIndex}`;
 
-    const elements = getNavigableElements();
-    const maxIndex = elements.length - 1;
+                    return (
+                      <div style={{ position: 'relative', margin: '12px 0' }}>
+                        <pre 
+                          style={{
+                            backgroundColor: isCodeFocused ? themeColors.accent : themeColors.surface,
+                            padding: '12px',
+                            borderRadius: '6px',
+                            border: isCodeFocused ? `3px solid ${themeColors.accent}` : `1px solid ${themeColors.border}`,
+                            margin: 0,
+                            overflow: 'auto',
+                            fontSize: '0.85rem',
+                            lineHeight: '1.4',
+                            position: 'relative'
+                          }}
+                          aria-label={`Bloque de código ${blockIndex + 1}${isCodeFocused ? ', enfocado' : ''}. Presiona Tab para navegar códigos, C para copiar, Enter para leer`}
+                        >
+                          {/* Indicador de foco para código */}
+                          {isCodeFocused && (
+                            <div style={{
+                              position: 'absolute',
+                              top: '-2px',
+                              right: '8px',
+                              backgroundColor: themeColors.accent,
+                              color: 'white',
+                              padding: '2px 8px',
+                              borderRadius: '0 0 4px 4px',
+                              fontSize: '0.7rem',
+                              fontWeight: 'bold'
+                            }}>
+                              Código {blockIndex + 1}/{codeBlocks.length} - ENFOCADO
+                            </div>
+                          )}
+                          
+                          <code
+                            {...props}
+                            style={{
+                              color: isCodeFocused ? themeColors.background : themeColors.text,
+                              fontFamily: 'Consolas, Monaco, "Courier New", monospace'
+                            }}
+                          >
+                            {children}
+                          </code>
+                        </pre>
+                        
+                        {/* Botón de copiar para cada bloque de código */}
+                        <button
+                          type="button"
+                          
+                          aria-label={isCopied ? 'Código copiado' : `Copiar código ${blockIndex + 1}`}
+                          style={{
+                            position: 'absolute',
+                            top: '8px',
+                            right: '8px',
+                            backgroundColor: isCopied ? (themeColors.success || '#4caf50') : themeColors.accent,
+                            color: '#ffffff',
+                            fontSize: '0.7rem',
+                            minWidth: '70px',
+                            height: '28px',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            zIndex: 10,
+                            fontFamily: 'inherit',
+                            fontWeight: 500,
+                            transition: 'all 0.2s ease',
+                            outline: 'none'
+                          }}
+                          onMouseOver={(e) => {
+                            if (!isCopied) {
+                              e.target.style.transform = 'scale(1.05)';
+                              e.target.style.filter = 'brightness(0.9)';
+                            }
+                          }}
+                          onMouseOut={(e) => {
+                            e.target.style.transform = 'scale(1)';
+                            e.target.style.filter = 'brightness(1)';
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
 
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        setSelectedIndex(prev => {
-          const newIndex = prev < maxIndex ? prev + 1 : 0;
-          return newIndex;
-        });
-        break;
+                            navigator.clipboard.writeText(codeContent).then(() => {
+                              setCopiedIndex(`${messageIndex}-${blockIndex}`);
+                              speak('Código copiado al portapapeles');
 
-      case 'ArrowUp':
-        e.preventDefault();
-        setSelectedIndex(prev => {
-          const newIndex = prev > 0 ? prev - 1 : maxIndex;
-          return newIndex;
-        });
-        break;
-
-      case 'Tab':
-        e.preventDefault();
-        if (e.shiftKey) {
-          if (focusedSection === 'files') {
-            setFocusedSection('buttons');
-            setSelectedIndex(0);
-          } else if (focusedSection === 'structure' && hasCodeStructure) {
-            setFocusedSection('files');
-            setSelectedIndex(0);
-          }
-        } else {
-          if (focusedSection === 'buttons') {
-            setFocusedSection('files');
-            setSelectedIndex(0);
-          } else if (focusedSection === 'files' && hasCodeStructure) {
-            setFocusedSection('structure');
-            setSelectedIndex(0);
-          }
-        }
-        break;
-
-      case 'Enter':
-        e.preventDefault();
-        handleEnterPress();
-        break;
-
-      case 'm':
-      case 'M':
-        e.preventDefault();
-        if (focusedSection === 'files' && elements[selectedIndex]) {
-          const element = elements[selectedIndex];
-          const fakeEvent = {
-            preventDefault: () => {},
-            stopPropagation: () => {},
-            clientX: window.innerWidth / 2,
-            clientY: window.innerHeight / 2
-          };
-          handleContextMenu(fakeEvent, element);
-        }
-        break;
-
-      default:
-        break;
-    }
-  }, [collapsed, focusedSection, selectedIndex, getNavigableElements, hasCodeStructure, tabIndex, handleContextMenu]);
-
-  // Manejar Enter en el elemento enfocado
-  const handleEnterPress = React.useCallback(() => {
-    const elements = getNavigableElements();
-
-    if (focusedSection === 'buttons') {
-      const actions = {
-        createFile: () => handleCreateFile(),
-        createFolder: () => handleCreateFolder(),
-        openFile: () => handleOpenFile(),
-        openFolder: () => handleOpenFolder()
-      };
-      actions[elements[selectedIndex]]?.();
-    }
-
-    if (focusedSection === 'files') {
-      const element = elements[selectedIndex];
-      if (element?.type === 'folder') {
-        toggleFolder(element.id);
-      } else if (element?.type === 'file') {
-        handleFileClick(element);
-      }
-    }
-  }, [focusedSection, selectedIndex, getNavigableElements]);
+                              setTimeout(() => {
+                                setCopiedIndex(null);
+                              }, 2000);
+                            });
+                          }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onMouseUp={(e) => {
+                            e.target.style.transform = 'scale(1.05)';
+                          }}
+                          onFocus={(e) => {
+                            e.target.style.outline = `2px solid ${themeColors.background}`;
+                            e.target.style.outlineOffset = '2px';
+                          }}
+                          onBlur={(e) => {
+                            e.target.style.outline = 'none';
+                          }}
+                        >
+                          {isCopied ? '✓ Copiado' : 'Copiar'}
+                        </button>
+                      </div>
+                    );
+                  }
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   // Manejar navegación por teclado en el chat
   const handleChatKeyDown = React.useCallback((e) => {
+    const isInteractiveElement =
+    e.target instanceof HTMLButtonElement ||
+    e.target.getAttribute('role') === 'button';
+
     if (tabIndex !== 1) return;
 
-    const isInTextField = e.target.tagName === 'TEXTAREA' || 
-                        (e.target.tagName === 'INPUT' && e.target.type === 'text');
+    const tag = e.target.tagName;
 
+    if (['INPUT', 'TEXTAREA', 'BUTTON'].includes(tag)) {
+      return; // NO SE USA navegación global aquí
+    }
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      stop();
+
+      // Volver a Archivos
+      setTabIndex(0);
+
+      // Devolver foco al FileManager
+      fileManagerContainerRef.current?.focus();
+
+      speak('Volviendo al gestor de archivos');
+      return;
+    }
+    
+    const isInTextField = e.target === inputRef.current;
+
+    // Navegación desde el input
     if (isInTextField) {
       if (e.key === 'Escape' && chatHistory.length > 0) {
         e.preventDefault();
-        setLastInteractionWasKeyboard(true);
         setFocusedMessageIndex(chatHistory.length - 1);
-        setFocusedCodeButton(null);
+        inputRef.current.blur();
         const lastMessage = chatHistory[chatHistory.length - 1];
         const role = lastMessage.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
-        speakOnFocus(`Mensaje ${chatHistory.length} de ${chatHistory.length}. ${role}`);
+        speak(`Navegación de mensajes activada. Mensaje ${chatHistory.length} de ${chatHistory.length}. ${role}. Usa flechas para navegar, Enter para leer, Tab para navegar códigos, i para volver al input`);
+      }
+      // Navegación rápida con Ctrl
+      else if (e.key === 'ArrowUp' && e.ctrlKey && chatHistory.length > 0) {
+        e.preventDefault();
+        setFocusedMessageIndex(chatHistory.length - 1);
+        inputRef.current.blur();
+        const lastMessage = chatHistory[chatHistory.length - 1];
+        const role = lastMessage.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
+        speak(`Último mensaje. ${role}`);
       }
       return;
     }
 
-    if (chatHistory.length === 0 && !['i', 'I'].includes(e.key)) return;
-
-    setLastInteractionWasKeyboard(true);
-
+    // Navegación en mensajes
     switch (e.key) {
       case 'i':
       case 'I':
         e.preventDefault();
-        stop();
         setFocusedMessageIndex(-1);
-        setFocusedCodeButton(null);
+        setFocusedCodeIndex(-1);
         if (inputRef.current) {
           inputRef.current.focus();
-          speakOnFocus('Campo de texto enfocado. Escribe tu pregunta');
+          speak('Campo de texto enfocado');
         }
         break;
 
       case 'ArrowUp':
         e.preventDefault();
-        stop();
-        setFocusedCodeButton(null);
-        setFocusedMessageIndex(prev => {
-          const newIndex = prev > 0 ? prev - 1 : (prev === -1 ? chatHistory.length - 1 : 0);
-          const message = chatHistory[newIndex];
-          const role = message.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
-          speakOnFocus(`Mensaje ${newIndex + 1} de ${chatHistory.length}. ${role}`);
-          return newIndex;
-        });
+        if (focusedCodeIndex >= 0) {
+          // Si estamos en código, navegar entre códigos del mismo mensaje
+          const message = chatHistory[focusedMessageIndex];
+          const codeBlocks = extractCodeBlocks(message.content);
+          const newCodeIndex = focusedCodeIndex > 0 ? focusedCodeIndex - 1 : codeBlocks.length - 1;
+          setFocusedCodeIndex(newCodeIndex);
+          speak(`Bloque de código ${newCodeIndex + 1} de ${codeBlocks.length}`);
+        } else {
+          // Navegar entre mensajes
+          setFocusedMessageIndex(prev => {
+            const newIndex = prev > 0 ? prev - 1 : chatHistory.length - 1;
+            const message = chatHistory[newIndex];
+            const role = message.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
+            const codeBlocks = extractCodeBlocks(message.content);
+            const hasCode = codeBlocks.length > 0;
+            speak(`Mensaje ${newIndex + 1} de ${chatHistory.length}. ${role}${hasCode ? `. Contiene ${codeBlocks.length} bloque${codeBlocks.length > 1 ? 's' : ''} de código` : ''}`);
+            return newIndex;
+          });
+        }
         break;
 
       case 'ArrowDown':
         e.preventDefault();
-        stop();
-        setFocusedCodeButton(null);
-        setFocusedMessageIndex(prev => {
-          const newIndex = prev < chatHistory.length - 1 ? prev + 1 : (prev === -1 ? 0 : chatHistory.length - 1);
-          const message = chatHistory[newIndex];
-          const role = message.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
-          speakOnFocus(`Mensaje ${newIndex + 1} de ${chatHistory.length}. ${role}`);
-          return newIndex;
-        });
+        if (focusedCodeIndex >= 0) {
+          // Si estamos en código, navegar entre códigos del mismo mensaje
+          const message = chatHistory[focusedMessageIndex];
+          const codeBlocks = extractCodeBlocks(message.content);
+          const newCodeIndex = focusedCodeIndex < codeBlocks.length - 1 ? focusedCodeIndex + 1 : 0;
+          setFocusedCodeIndex(newCodeIndex);
+          speak(`Bloque de código ${newCodeIndex + 1} de ${codeBlocks.length}`);
+        } else {
+          // Navegar entre mensajes
+          setFocusedMessageIndex(prev => {
+            const newIndex = prev < chatHistory.length - 1 ? prev + 1 : 0;
+            const message = chatHistory[newIndex];
+            const role = message.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
+            const codeBlocks = extractCodeBlocks(message.content);
+            const hasCode = codeBlocks.length > 0;
+            speak(`Mensaje ${newIndex + 1} de ${chatHistory.length}. ${role}${hasCode ? `. Contiene ${codeBlocks.length} bloque${codeBlocks.length > 1 ? 's' : ''} de código` : ''}`);
+            return newIndex;
+          });
+        }
         break;
 
       case 'Tab':
         e.preventDefault();
         if (focusedMessageIndex >= 0) {
-          const messageCodeButtons = document.querySelectorAll(
-            `[data-message-index="${focusedMessageIndex}"][data-copy-button]`
-          );
+          const message = chatHistory[focusedMessageIndex];
+          const codeBlocks = extractCodeBlocks(message.content);
           
-          if (messageCodeButtons.length > 0) {
-            if (focusedCodeButton === null) {
-              setFocusedCodeButton({ messageIndex: focusedMessageIndex, codeIndex: 0 });
-              speakOnFocus('Botón copiar código Python. Presiona Enter para copiar');
-            } else if (focusedCodeButton.codeIndex < messageCodeButtons.length - 1) {
-              setFocusedCodeButton({ 
-                messageIndex: focusedMessageIndex, 
-                codeIndex: focusedCodeButton.codeIndex + 1 
-              });
-              speakOnFocus('Botón copiar código Python. Presiona Enter para copiar');
+          if (codeBlocks.length > 0) {
+            if (focusedCodeIndex < 0) {
+              // Entrar al primer bloque de código
+              setFocusedCodeIndex(0);
+              speak(`Navegando códigos. Bloque 1 de ${codeBlocks.length}. Presiona Enter para leer, C para copiar, Tab para siguiente código, Escape para volver a mensajes`);
+            } else if (focusedCodeIndex < codeBlocks.length - 1) {
+              // Ir al siguiente bloque de código
+              setFocusedCodeIndex(prev => prev + 1);
+              speak(`Bloque de código ${focusedCodeIndex + 2} de ${codeBlocks.length}`);
             } else {
-              setFocusedCodeButton(null);
-              const message = chatHistory[focusedMessageIndex];
-              const role = message.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
-              speakOnFocus(`Mensaje ${focusedMessageIndex + 1} de ${chatHistory.length}. ${role}`);
+              // Salir de navegación de códigos
+              setFocusedCodeIndex(-1);
+              speak('Volviendo a navegación de mensajes');
             }
+          } else {
+            speak('Este mensaje no contiene bloques de código');
           }
         }
         break;
 
       case 'Enter':
+        if (isInteractiveElement) return; 
         e.preventDefault();
-        if (focusedCodeButton !== null) {
-          const button = document.querySelector(
-            `[data-message-index="${focusedCodeButton.messageIndex}"][data-code-index="${focusedCodeButton.codeIndex}"]`
-          );
-          if (button) {
-            button.click();
-            speakOnFocus('Código copiado al portapapeles');
-          }
-        } else if (focusedMessageIndex >= 0) {
+        if (focusedMessageIndex >= 0) {
           const message = chatHistory[focusedMessageIndex];
-          const textContent = message.content
-            .replace(/```[\s\S]*?```/g, '. Bloque de código. ')
-            .replace(/`([^`]+)`/g, '$1')
-            .replace(/\*\*([^*]+)\*\*/g, '$1')
-            .replace(/\*([^*]+)\*/g, '$1')
-            .replace(/#{1,6}\s/g, '')
-            .replace(/\n{2,}/g, '. ')
-            .replace(/\n/g, ' ')
-            .trim();
           
-          stop();
-          speak(textContent, { rate: 1.1 });
+          if (focusedCodeIndex >= 0) {
+            // Leer solo el código enfocado
+            const codeBlocks = extractCodeBlocks(message.content);
+            if (codeBlocks[focusedCodeIndex]) {
+              const codeContent = codeBlocks[focusedCodeIndex].content;
+              speak(`Código Python: ${codeContent}`, { rate: 0.9 });
+            }
+          } else {
+            // Leer el mensaje completo
+            const textContent = message.content
+              .replace(/```[\s\S]*?```/g, ' [bloque de código] ')
+              .replace(/`([^`]+)`/g, '$1')
+              .replace(/\*\*([^*]+)\*\*/g, '$1')
+              .replace(/\*([^*]+)\*/g, '$1')
+              .replace(/#{1,6}\s/g, '')
+              .trim();
+            speak(textContent, { rate: 1.1 });
+          }
         }
         break;
 
-      case 'Escape':
+      case 'c':
+      case 'C':
         e.preventDefault();
-        stop();
-        setFocusedCodeButton(null);
-        speakOnFocus('Lectura detenida');
+        if (focusedMessageIndex >= 0) {
+          const message = chatHistory[focusedMessageIndex];
+          
+          if (focusedCodeIndex >= 0) {
+            // Copiar el código enfocado
+            const codeBlocks = extractCodeBlocks(message.content);
+            if (codeBlocks[focusedCodeIndex]) {
+              const codeContent = codeBlocks[focusedCodeIndex].content;
+              navigator.clipboard.writeText(codeContent).then(() => {
+                setCopiedIndex(`${focusedMessageIndex}-${focusedCodeIndex}`);
+                speak('Código copiado al portapapeles');
+                setTimeout(() => setCopiedIndex(null), 2000);
+              });
+            }
+          } else {
+            // Copiar el primer código del mensaje (comportamiento anterior)
+            const codeBlocks = extractCodeBlocks(message.content);
+            if (codeBlocks.length > 0) {
+              const codeContent = codeBlocks[0].content;
+              navigator.clipboard.writeText(codeContent).then(() => {
+                setCopiedIndex(`${focusedMessageIndex}-0`);
+                speak('Código copiado al portapapeles');
+                setTimeout(() => setCopiedIndex(null), 2000);
+              });
+            } else {
+              speak('No hay código Python en este mensaje');
+            }
+          }
+        }
         break;
 
-      default:
+      // Tecla R para leer solo código
+      case 'r':
+      case 'R':
+        e.preventDefault();
+        if (focusedMessageIndex >= 0) {
+          const message = chatHistory[focusedMessageIndex];
+          const codeBlocks = extractCodeBlocks(message.content);
+          
+          if (focusedCodeIndex >= 0 && codeBlocks[focusedCodeIndex]) {
+            // Leer el código enfocado
+            const codeContent = codeBlocks[focusedCodeIndex].content;
+            speak(`Código Python: ${codeContent}`, { rate: 0.9 });
+          } else if (codeBlocks.length > 0) {
+            // Leer el primer código si no hay ninguno enfocado
+            const codeContent = codeBlocks[0].content;
+            speak(`Código Python: ${codeContent}`, { rate: 0.9 });
+          } else {
+            speak('No hay código Python en este mensaje');
+          }
+        }
+        break;
+
+      // Tecla S para leer resumen del mensaje
+      case 's':
+      case 'S':
+        e.preventDefault();
+        if (focusedMessageIndex >= 0) {
+          const message = chatHistory[focusedMessageIndex];
+          const role = message.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
+          const codeBlocks = extractCodeBlocks(message.content);
+          const hasCode = codeBlocks.length > 0;
+          const wordCount = message.content.trim().split(/\s+/).length;
+          const summary = `${role}, ${wordCount} palabras${hasCode ? `, contiene ${codeBlocks.length} bloque${codeBlocks.length > 1 ? 's' : ''} de código` : ''}. Presiona Enter para leer completo, Tab para navegar códigos, R para leer código, C para copiar`;
+          speak(summary);
+        }
+        break;
+
+      // Spacebar para pausar/reanudar lectura
+      case ' ':
+        e.preventDefault();
+        if (window.speechSynthesis.speaking) {
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+            speak('Lectura reanudada', { rate: 1.5 });
+          } else {
+            window.speechSynthesis.pause();
+            speak('Lectura pausada', { rate: 1.5 });
+          }
+        }
         break;
     }
-  }, [tabIndex, chatHistory, focusedMessageIndex, focusedCodeButton, speakOnFocus, speak, stop]);
-  
-  // Manejar foco en mensajes (solo por mouse)
-  const handleMessageFocus = React.useCallback((index) => {
-    if (lastInteractionWasKeyboard) return;
-    
-    setFocusedMessageIndex(index);
-    setFocusedCodeButton(null);
-    const message = chatHistory[index];
-    const role = message.role === 'user' ? 'Tu mensaje' : 'Respuesta del copiloto';
-    speakOnHover(`Mensaje ${index + 1} de ${chatHistory.length}. ${role}`, 300);
-  }, [chatHistory, speakOnHover, lastInteractionWasKeyboard]);
+  }, [tabIndex, chatHistory, focusedMessageIndex, focusedCodeIndex, speak, stop]);
 
-  // Manejar click en mensaje - AJUSTADO
-  const handleMessageClick = React.useCallback((index, e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
+  // Manejar navegación por teclado
+  const handleKeyDown = (e) => {
+    if (collapsed) return;
+
+    if (tabIndex === 1) {
+      handleChatKeyDown(e);
     }
-    setLastInteractionWasKeyboard(false);
-    setFocusedMessageIndex(index);
-    setFocusedCodeButton(null);
-    handleMessageFocus(index);
-  }, [handleMessageFocus]);
+  };
 
-  // Función para leer el texto mientras se escribe
+  // Función para leer el texto mientras se escribe dentro del input para enviar un prompt
   const handlePromptChange = React.useCallback((e) => {
     const newValue = e.target.value;
     setPrompt(newValue);
@@ -978,7 +1159,20 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     }
     
     if (isFile) {
-      const fileName = newName.includes('.') ? newName : `${newName}.txt`;
+      let fileName = newName.trim();
+      
+      // Si no tiene extensión, agregar .txt por defecto
+      if (!fileName.includes('.')) {
+        fileName = `${fileName}.txt`;
+      }
+      
+      // Validar extensión
+      if (!validateFileExtension(fileName)) {
+        speak('Solo se permiten archivos con extensión .txt o .py');
+        setExtensionErrorOpen(true);
+        return;
+      }
+      
       const newFile = {
         id: Date.now(),
         name: fileName,
@@ -991,9 +1185,9 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
 
       setFiles(prev => [...prev, newFile]);
       
-      // CORRECCIÓN: Asegurarse de que onFileOpen se llame correctamente
+      // Asegurarse de que onFileOpen se llame correctamente
       if (onFileOpen) {
-        onFileOpen(fileName, '');
+        onFileOpen(fileName, '', newFile.id);
       }
       
       speak(`Archivo ${fileName} creado correctamente y abierto en el editor`);
@@ -1014,7 +1208,7 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     
     setDialogOpen(false);
     setNewName('');
-  };
+  };;
 
   // Modificar handleFileClick para incluir la selección visual
   const handleFileClick = (file) => {
@@ -1066,364 +1260,26 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
       [folderId]: !prev[folderId]
     }));
   };
-
-const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageFocus, onMessageClick, messageRefs, focusedCodeButton }) => {
-  const chatEndRef = React.useRef(null);
-  const [copiedStates, setCopiedStates] = React.useState({});
-
-  const handleCopy = (messageIndex, codeIndex) => {
-    const key = `${messageIndex}-${codeIndex}`;
-    setCopiedStates(prev => ({ ...prev, [key]: true }));
-    setTimeout(() => {
-      setCopiedStates(prev => ({ ...prev, [key]: false }));
-    }, 2000);
-  };
-
-  // Copia robusta vía Clipboard API con fallback
-  const handleCopyAndWrite = async (messageIndex, codeIndex, text) => {
-    try {
-      // Copiar al portapapeles
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        // Fallback para navegadores antiguos
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
-        textArea.style.position = 'fixed';
-        textArea.style.left = '-999999px';
-        textArea.style.top = '-999999px';
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        try {
-          document.execCommand('copy');
-          textArea.remove();
-        } catch (err) {
-          console.error('Fallback: Error al copiar', err);
-          textArea.remove();
-          throw err;
-        }
-      }
-      
-      // Actualizar estado visual
-      handleCopy(messageIndex, codeIndex);
-      
-      console.log('✓ Código copiado exitosamente');
-    } catch (err) {
-      console.error('Error al copiar al portapapeles:', err);
-    }
-  };
-
-  return (
-    <div>
-      {chatHistory.map((message, messageIndex) => {
-        const content = typeof message.content === 'string' ? message.content : String(message.content || '');
-        const isFocused = focusedMessageIndex === messageIndex && isKeyboardNavigation;
-        let codeBlockIndex = 0;
-
-        return (
-          <div
-            key={messageIndex}
-            ref={el => (messageRefs.current[messageIndex] = el)}
-            tabIndex={focusedMessageIndex === messageIndex ? 0 : -1}
-            onClick={() => onMessageClick(messageIndex)}
-            onMouseEnter={() => onMessageFocus(messageIndex)}
-            onMouseDown={(e) => e.preventDefault()} 
-            onFocus={() => onMessageFocus(messageIndex)}
-            role="article"
-            aria-label={`Mensaje ${messageIndex + 1} de ${chatHistory.length}. ${message.role === "user" ? "Tu mensaje" : "Respuesta del copiloto"}`}
-            style={{
-              marginBottom: "16px",
-              padding: '12px',
-              borderRadius: '8px',
-              backgroundColor: isFocused ? themeColors.hover : 'transparent',
-              border: isFocused ? `2px solid ${themeColors.accent}` : '2px solid transparent',
-              outline: 'none',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              position: 'relative'
-            }}
-          >
-            <Typography style={{
-              color: themeColors.text,
-              fontWeight: 700,
-              marginBottom: "6px",
-              fontSize: '0.95rem'
-            }}>
-              {message.role === "user" ? "Tú" : "Copiloto"}
-            </Typography>
-            <ReactMarkdown
-              children={content}
-              remarkPlugins={[remarkGfm]}
-              components={{
-                p: ({ node, ...props }) => (
-                  <Typography
-                    {...props}
-                    style={{
-                      color: themeColors.text,
-                      marginBottom: "8px",
-                      lineHeight: "1.5",
-                      fontSize: '0.9rem'
-                    }}
-                  />
-                ),
-                h1: ({ node, ...props }) => (
-                  <Typography
-                    {...props}
-                    variant="h5"
-                    style={{
-                      color: themeColors.text,
-                      fontWeight: 700,
-                      marginTop: "12px",
-                      marginBottom: "8px"
-                    }}
-                  />
-                ),
-                h2: ({ node, ...props }) => (
-                  <Typography
-                    {...props}
-                    variant="h6"
-                    style={{
-                      color: themeColors.text,
-                      fontWeight: 600,
-                      marginTop: "10px",
-                      marginBottom: "6px"
-                    }}
-                  />
-                ),
-                h3: ({ node, ...props }) => (
-                  <Typography
-                    {...props}
-                    variant="subtitle1"
-                    style={{
-                      color: themeColors.accent,
-                      fontWeight: 600,
-                      marginTop: "8px",
-                      marginBottom: "4px"
-                    }}
-                  />
-                ),
-                ul: ({ node, ...props }) => (
-                  <ul
-                    {...props}
-                    style={{
-                      color: themeColors.text,
-                      marginTop: "4px",
-                      marginBottom: "8px",
-                      paddingLeft: "20px",
-                      listStyleType: 'disc'
-                    }}
-                  />
-                ),
-                ol: ({ node, ...props }) => (
-                  <ol
-                    {...props}
-                    style={{
-                      color: themeColors.text,
-                      marginTop: "4px",
-                      marginBottom: "8px",
-                      paddingLeft: "20px"
-                    }}
-                  />
-                ),
-                li: ({ node, ...props }) => (
-                  <li
-                    {...props}
-                    style={{
-                      color: themeColors.text,
-                      marginBottom: "4px",
-                      lineHeight: "1.5"
-                    }}
-                  />
-                ),
-                strong: ({ node, ...props }) => (
-                  <strong
-                    {...props}
-                    style={{
-                      color: themeColors.accent,
-                      fontWeight: 700
-                    }}
-                  />
-                ),
-                em: ({ node, ...props }) => (
-                  <em
-                    {...props}
-                    style={{
-                      color: themeColors.textSecondary,
-                      fontStyle: 'italic'
-                    }}
-                  />
-                ),
-                code: ({ node, inline, className, children, ...props }) => {
-                  const isPython = className === 'language-python';
-
-                  if (inline) {
-                    return (
-                      <code
-                        {...props}
-                        style={{
-                          backgroundColor: themeColors.surface,
-                          color: themeColors.accent,
-                          padding: '1px 4px',
-                          borderRadius: '3px',
-                          fontSize: '0.85em',
-                          fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-                          border: `1px solid ${themeColors.border}`,
-                          fontWeight: 500
-                        }}
-                      >
-                        {children}
-                      </code>
-                    );
-                  }
-
-                  const currentCodeIndex = codeBlockIndex++;
-                  const copyKey = `${messageIndex}-${currentCodeIndex}`;
-                  const copied = copiedStates[copyKey] || false;
-                  const isButtonFocused =
-                    focusedCodeButton?.messageIndex === messageIndex &&
-                    focusedCodeButton?.codeIndex === currentCodeIndex;
-
-                  return (
-                    <div style={{
-                      position: "relative",
-                      marginTop: isPython ? "28px" : "8px",
-                      marginBottom: "12px"
-                    }}>
-                      {isPython && (
-                        <Button
-                          variant="contained"
-                          size="small"
-                          // Hacer el botón navegable por teclado
-                          tabIndex={0}
-                          type="button"
-                          data-message-index={messageIndex}
-                          data-code-index={currentCodeIndex}
-                          data-copy-button="true"
-                          aria-label={`Copiar código Python. ${copied ? 'Código copiado' : 'Presiona Enter para copiar'}`}
-                          onMouseEnter={() => !isKeyboardNavigation && speakOnHover(`Botón copiar código Python. ${copied ? 'Código copiado' : 'Click para copiar'}`)}
-                          onMouseLeave={cancelHoverSpeak}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            handleCopyAndWrite(messageIndex, currentCodeIndex, String(children))
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              handleCopyAndWrite(messageIndex, currentCodeIndex, String(children));
-                            }
-                          }}
-                          sx={{
-                            position: "absolute",
-                            top: -24,
-                            right: 8,
-                            backgroundColor: copied ? themeColors.success : themeColors.accent,
-                            color:
-                              themeColors.background === '#000000' ||
-                              themeColors.background === '#0d1117'
-                                ? '#000000'
-                                : '#ffffff',
-                            fontWeight: 600,
-                            fontSize: '0.7rem',
-                            minWidth: '60px',
-                            height: '24px',
-                            padding: '2px 8px',
-                            textTransform: 'none',
-                            zIndex: 10,
-                            transition: 'all 0.3s ease',
-                            outline: isButtonFocused ? `3px solid ${themeColors.accent}` : 'none',
-                            outlineOffset: '2px',
-                            '&:hover': {
-                              backgroundColor: copied ? themeColors.success : themeColors.accent,
-                              filter: 'brightness(0.85)'
-                            },
-                            '&:focus': {
-                              outline: `2px solid ${themeColors.accent}`,
-                              outlineOffset: '2px'
-                            }
-                          }}
-                        >
-                          {copied ? '✓ Copiado' : 'Copiar'}
-                        </Button>
-                      )}
-                      <pre style={{
-                        whiteSpace: "pre-wrap",
-                        wordWrap: "break-word",
-                        backgroundColor: themeColors.surface,
-                        padding: '10px',
-                        borderRadius: '4px',
-                        border: `1px solid ${themeColors.border}`,
-                        margin: 0,
-                        // Quitar scroll interno en cada bloque
-                        overflow: 'visible',
-                        // Permitir lectura cómoda, sin límite de altura interno
-                        maxHeight: 'none',
-                        fontSize: '0.85rem',
-                        lineHeight: '1.4'
-                      }}>
-                        <code
-                          {...props}
-                          style={{
-                            color: themeColors.text,
-                            fontFamily: 'Consolas, Monaco, "Courier New", monospace'
-                          }}
-                        >
-                          {children}
-                        </code>
-                      </pre>
-                    </div>
-                  );
-                },
-                blockquote: ({ node, ...props }) => (
-                  <blockquote
-                    {...props}
-                    style={{
-                      borderLeft: `3px solid ${themeColors.accent}`,
-                      paddingLeft: '12px',
-                      marginLeft: 0,
-                      marginTop: '8px',
-                      marginBottom: '8px',
-                      color: themeColors.textSecondary,
-                      fontStyle: 'italic'
-                    }}
-                  />
-                ),
-                a: ({ node, ...props }) => (
-                  <a
-                    {...props}
-                    style={{
-                      color: themeColors.accent,
-                      textDecoration: 'underline',
-                      cursor: 'pointer'
-                    }}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  />
-                ),
-              }}
-            />
-          </div>
-        );
-      })}
-      <div ref={chatEndRef} />
-    </div>
-  );
-};
   
-  const handleTabChange = (event, newIndex) => {
-    setTabIndex(newIndex);
+  const handleTabChange = (_, newValue) => {
+    setTabIndex(newValue);
+
+    speak(
+      newValue === 1
+        ? 'Chat del copiloto seleccionado'
+        : 'Gestor de archivos seleccionado'
+    );
   };
 
   const handleGenerateCode = async () => {
     if (!prompt.trim()) return;
     
     setLoading(true);
-    
+
+    // Anunciar envío
+    announce('Enviando mensaje al copiloto');
+    speak('Mensaje enviado, generando respuesta');
+
     // Add user message to chat history
     const userMessage = { role: 'user', content: prompt.trim() };
     const updatedHistory = [...chatHistory, userMessage];
@@ -1438,11 +1294,17 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
       // Add assistant response to chat history
       const assistantMessage = { role: 'assistant', content: responseContent };
       setChatHistory([...updatedHistory, assistantMessage]);
-      
+
+      // Anunciar recepción
+      announce('Respuesta del copiloto recibida');
+      speak('Respuesta del copiloto lista');
+
     } catch (error) {
       console.error('Error generating code:', error);
       const errorMessage = { role: 'assistant', content: 'Error al generar respuesta. Inténtalo de nuevo.' };
       setChatHistory([...updatedHistory, errorMessage]);
+      speak('Error al generar respuesta');
+
     } finally {
       setPrompt('');
       setLoading(false);
@@ -1456,23 +1318,6 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
       setIsListening(true);
     }
   };
-
-  // Anunciar elemento enfocado
-  React.useEffect(() => {
-    if (collapsed || tabIndex === 1) return;
-    
-    const description = getFocusedElementDescription();
-    if (description) {
-      speakOnFocus(description);
-    }
-  }, [selectedIndex, focusedSection, collapsed, getFocusedElementDescription, speakOnFocus, tabIndex]);
-
-  // Focus en el componente al montar
-  React.useEffect(() => {
-    if (fileManagerRef.current && !collapsed) {
-      fileManagerRef.current.focus();
-    }
-  }, [collapsed]);
 
   // Limpiar timeout al desmontar
   React.useEffect(() => {
@@ -1490,23 +1335,38 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
     }
   }, [codeStructure]);
 
-  // Resetear navegación por teclado al cambiar de tab
-  React.useEffect(() => {
-    if (tabIndex !== 1) {
-      setLastInteractionWasKeyboard(false);
-      setFocusedMessageIndex(-1);
-      setFocusedCodeButton(null);
-    }
-  }, [tabIndex]);
-
   // Guardar en localStorage cuando cambien files o folders
   React.useEffect(() => {
-    localStorage.setItem('files', JSON.stringify(files));
-  }, [files]);
+    const handleStorageChange = (e) => {
+      // Manejar tanto StorageEvent como CustomEvent
+      if (e.key === 'files' || e.type === 'storage') {
+        const newFiles = JSON.parse(localStorage.getItem('files')) || [];
+        setFiles(newFiles);
+      }
+      if (e.key === 'folders' || e.type === 'storage') {
+        const newFolders = JSON.parse(localStorage.getItem('folders')) || [];
+        setFolders(newFolders);
+      }
+    };
 
-  React.useEffect(() => {
-    localStorage.setItem('folders', JSON.stringify(folders));
-  }, [folders]);
+    // Escuchar eventos de storage (desde otras pestañas o componentes)
+    window.addEventListener('storage', handleStorageChange);
+    
+    // También escuchar un evento personalizado para cambios dentro de la misma pestaña
+    const handleLocalStorageUpdate = () => {
+      const newFiles = JSON.parse(localStorage.getItem('files')) || [];
+      const newFolders = JSON.parse(localStorage.getItem('folders')) || [];
+      setFiles(newFiles);
+      setFolders(newFolders);
+    };
+    
+    window.addEventListener('localStorage-updated', handleLocalStorageUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('localStorage-updated', handleLocalStorageUpdate);
+    };
+  }, []);
 
   // Focus en el componente al montar
   React.useEffect(() => {
@@ -1521,74 +1381,82 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
     }
   }, [transcript]);
 
-  // Registrar componente en el sistema de navegación
+  // Eliminar
+  // Sincronizar files con localStorage
   React.useEffect(() => {
-    const fileManagerAPI = {
-      focus: () => {
-        if (fileManagerContainerRef.current) {
-          fileManagerContainerRef.current.focus();
-          setFocusedSection('buttons');
-          setSelectedIndex(0);
-          speak('Gestor de archivos. Presiona Tab para navegar entre secciones. Use las flechas para navegar dentro de cada sección.');
-        }
-      },
-      createFile: handleCreateFile,
-      createFolder: handleCreateFolder,
-      openFile: handleOpenFile,
-      openFolder: handleOpenFolder,
-      openChat: () => {
+    localStorage.setItem('files', JSON.stringify(files));
+    window.dispatchEvent(new Event('localStorage-updated'));
+  }, [files]);
+
+  // Sincronizar folders con localStorage
+  React.useEffect(() => {
+    localStorage.setItem('folders', JSON.stringify(folders));
+    window.dispatchEvent(new Event('localStorage-updated'));
+  }, [folders]);
+
+  // Registrar componente en el sistema de navegación
+React.useEffect(() => {
+  const fileManagerAPI = {
+    focus: () => {
+      // Si estamos en chat, cambiar a archivos primero
+      if (tabIndex === 1) {
         setTabIndex(1);
-        setTimeout(() => {
-          if (inputRef.current) {
-            inputRef.current.focus();
-          }
-        }, 100);
-        speak('Chat con copiloto activado');
-      },
-      openStructure: () => {
-        setTabIndex(0);
-        setFocusedSection('structure');
-        setSelectedIndex(0);
-        speak('Estructura del código');
+        // Esperar a que se actualice el DOM
+        requestAnimationFrame(() => {
+          fileManagerContainerRef.current?.focus();
+          speak('Panel del gestor de archivos. Presiona Tab para navegar entre secciones');
+        });
+      } else {
+        fileManagerContainerRef.current?.focus();
       }
-    };
+    },
+    blur: () => {
+      setIsFileManagerFocused(false);
+    },
+    createFile: handleCreateFile,
+    createFolder: handleCreateFolder,
+    openFile: handleOpenFile,
+    openFolder: handleOpenFolder,
+    openChat: () => {
+      setTabIndex(1);
+      requestAnimationFrame(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          speak(
+            'Chat del copiloto enfocado. Escribe tu mensaje o presiona Escape para salir'
+          );
+        }
+      });
+    },
+    openStructure: () => {
+      setTabIndex(0);
+      setSelectedIndex(0);
+      speak('Estructura del código');
+    }
+  };
 
-    registerComponent('filemanager', fileManagerAPI);
-    registerComponent('filemanager-create-file', { focus: handleCreateFile });
-    registerComponent('filemanager-create-folder', { focus: handleCreateFolder });
-    registerComponent('filemanager-open-file', { focus: handleOpenFile });
-    registerComponent('filemanager-open-folder', { focus: handleOpenFolder });
-    registerComponent('filemanager-chat', { focus: fileManagerAPI.openChat });
-    registerComponent('filemanager-structure', { focus: fileManagerAPI.openStructure });
+  registerComponent('filemanager', fileManagerAPI);
+  registerComponent('filemanager-create-file', { focus: handleCreateFile });
+  registerComponent('filemanager-create-folder', { focus: handleCreateFolder });
+  registerComponent('filemanager-open-file', { focus: handleOpenFile });
+  registerComponent('filemanager-open-folder', { focus: handleOpenFolder });
+  registerComponent('filemanager-chat', { focus: fileManagerAPI.openChat });
+  registerComponent('filemanager-structure', { focus: fileManagerAPI.openStructure });
 
-    return () => {
-      unregisterComponent('filemanager');
-      unregisterComponent('filemanager-create-file');
-      unregisterComponent('filemanager-create-folder');
-      unregisterComponent('filemanager-open-file');
-      unregisterComponent('filemanager-open-folder');
-      unregisterComponent('filemanager-chat');
-      unregisterComponent('filemanager-structure');
-    };
-  }, [registerComponent, unregisterComponent, speak, tabIndex]);
+  return () => {
+    unregisterComponent('filemanager');
+    unregisterComponent('filemanager-create-file');
+    unregisterComponent('filemanager-create-folder');
+    unregisterComponent('filemanager-open-file');
+    unregisterComponent('filemanager-open-folder');
+    unregisterComponent('filemanager-chat');
+    unregisterComponent('filemanager-structure');
+  };
+}, [registerComponent, unregisterComponent, speak, tabIndex, files, folders, getNavigableElements]);
 
   return (
     <Box 
-      ref={fileManagerContainerRef}
-      tabIndex={dialogOpen || renameDialogOpen || deleteDialogOpen || storageWarningOpen ? -1 : 0}
-      onKeyDown={dialogOpen || renameDialogOpen || deleteDialogOpen || storageWarningOpen ? undefined : (tabIndex === 1 ? handleChatKeyDown : handleKeyDown)}
-      onFocus={() => {
-        setIsFileManagerFocused(true);
-        setFocusedComponent('filemanager');
-        if (tabIndex === 0) {
-          speakOnFocus('Gestor de archivos. Presiona Tab para navegar entre secciones.');
-        } else {
-          speakOnFocus('Chat con copiloto. Presiona i para ir al campo de texto.');
-        }
-      }}
-      onBlur={() => {
-        setIsFileManagerFocused(false);
-      }}
+      onKeyDown={(tabIndex === 1 ? handleChatKeyDown : handleKeyDown)}
       sx={{ 
         height: '100%', 
         display: 'flex', 
@@ -1601,7 +1469,11 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
         transition: 'width 0.3s ease',
         borderRight: `1px solid ${themeColors.border}`,
         // outline: 'none'
-        outline: isFileManagerFocused ? `3px solid ${themeColors.accent}` : 'none',
+        outline: isFileManagerFocused
+        ? tabIndex === 1
+          ? `3px dashed ${themeColors.accent}`
+          : `3px solid ${themeColors.accent}`
+        : 'none',
         outlineOffset: '-3px'
       }}
       role="complementary"
@@ -1621,6 +1493,24 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
         {!collapsed && (
           <Tabs 
             value={tabIndex} 
+            ref={fileManagerContainerRef}
+      tabIndex={0}
+      onFocus={(e) => {
+      if (e.target !== fileManagerContainerRef.current) return;
+      setFocusedComponent('filemanager');
+      speak(
+        tabIndex === 1
+          ? 'Panel del chat del copiloto. Presiona Tab para navegar o Escape para salir'
+          : 'Panel del gestor de archivos. Presiona Tab para navegar entre secciones'
+      );
+    }}
+
+      onBlur={(e) => {
+        // Solo marcar como no enfocado si el foco sale completamente del FileManager
+        if (!fileManagerContainerRef.current?.contains(e.relatedTarget)) {
+          setIsFileManagerFocused(false);
+        }
+      }}
             onChange={handleTabChange} 
             aria-label="Pestañas del administrador de archivos"
             textColor="inherit"
@@ -1642,11 +1532,17 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
               label="Archivos" 
               aria-label="Pestaña de archivos"
               onMouseEnter={() => speakOnHover('Pestaña de archivos')}
+              onFocus={() =>
+                speak('Pestaña de archivos seleccionada')
+              }
               onMouseLeave={cancelHoverSpeak}
             />
             <Tab 
               label="Chat" 
               aria-label="Pestaña de chat con copiloto"
+              onFocus={() =>
+                speak('Pestaña de chat con copiloto seleccionada')
+              }
               onMouseEnter={() => speakOnHover('Pestaña de chat con copiloto')}
               onMouseLeave={cancelHoverSpeak}
             />
@@ -1657,6 +1553,13 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
           size="small"
           aria-label={collapsed ? "Expandir panel de archivos" : "Colapsar panel de archivos"}
           onMouseEnter={() => speakOnHover(collapsed ? "Expandir panel de archivos" : "Colapsar panel de archivos")}
+          onFocus={() =>
+            speak(
+              collapsed
+                ? 'Expandir panel de archivos'
+                : 'Colapsar panel de archivos'
+            )
+          }
           onMouseLeave={cancelHoverSpeak}
           sx={{ 
             ml: collapsed ? 0 : 1,
@@ -1678,15 +1581,28 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
         }}>
           {/* Contenido de Chat */}
           {tabIndex === 1 && (
-            <Box sx={{ 
-              flex: 1, 
-              display: 'flex', 
-              flexDirection: 'column',
-              minHeight: 0,
-              backgroundColor: themeColors.background
-            }}>
+            <Box 
+              ref={chatPanelRef}
+              role="region"
+              aria-label="Chat del copiloto"
+              onFocus={() => {
+                speak(
+                  'Chat del copiloto. Usa flechas para navegar mensajes, Tab para navegar códigos, i para escribir, Escape para salir'
+                );
+              }}
+              sx={{ 
+                flex: 1, 
+                display: 'flex', 
+                flexDirection: 'column',
+                minHeight: 0,
+                backgroundColor: themeColors.background
+              }}
+            >
               <Box 
                 ref={chatContainerRef}
+                style={{
+                  overflowY: 'auto'
+                }}
                 sx={{ 
                   flexGrow: 1, 
                   overflowY: 'auto', 
@@ -1705,7 +1621,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                     mb: 2
                   }}
                 >
-                  Bienvenido a tu copiloto, estoy aquí para ayudarte a hacer las cosas más rápido.
+                  Bienvenido a tu copiloto.
                 </Typography>
                 
                 {chatHistory.length === 0 ? (
@@ -1736,17 +1652,14 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                       • <strong>i</strong> - Ir al campo de entrada para escribir<br/>
                       • <strong>↑/↓</strong> - Navegar entre mensajes<br/>
                       • <strong>Enter</strong> - Leer mensaje completo o copiar código<br/>
-                      • <strong>Tab</strong> - Ir a botones de código<br/>
+                      • <strong>C</strong> - Copiar código<br/>
                       • <strong>Esc</strong> - Detener lectura / Volver a mensajes desde input
                     </Typography>
                     <ChatHistory 
                       chatHistory={chatHistory} 
                       themeColors={themeColors}
                       focusedMessageIndex={focusedMessageIndex}
-                      onMessageFocus={handleMessageFocus}
-                      onMessageClick={handleMessageClick}
-                      messageRefs={messageRefs}
-                      focusedCodeButton={focusedCodeButton}
+                      copiedIndex={copiedIndex}
                     /> 
                   </>
                 )}
@@ -1789,6 +1702,9 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                   value={prompt}
                   onChange={handlePromptChange}
                   onKeyDown={(e) => {
+                    if (e.target !== inputRef.current) return;
+
+                    if (e.key === 'Tab') return;
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
                       
@@ -1805,11 +1721,10 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                   }}
                   onFocus={() => {
                     stop();
-                    setIsKeyboardNavigation(false);
+                    // setIsKeyboardNavigation(false);
                     setFocusedMessageIndex(-1);
-                    setFocusedCodeButton(null);
+                    // setFocusedCodeButton(null);
                     setLastTypedWord('');
-                    
                     speakOnFocus('Campo de texto para hacer preguntas al copiloto. Presiona Enter para enviar o Shift más Enter para nueva línea. Esc para volver a navegar mensajes. Presiona i desde cualquier lugar para volver aquí');
                     
                     if (prompt.trim()) {
@@ -1856,7 +1771,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                   InputProps={{
                     endAdornment: (
                       <>
-                        <IconButton 
+                        <IconButton
                           onClick={() => {
                             stop();
                             if (typingTimeoutRef.current) {
@@ -1864,6 +1779,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                             }
                             handleMicClick();
                           }}
+                          tabIndex={0}
                           onFocus={() => speakOnFocus(isListening ? "Detener grabación de voz" : "Activar grabación de voz")}
                           aria-label={isListening ? "Detener grabación de voz" : "Activar grabación de voz"}
                           onMouseEnter={() => speakOnHover(isListening ? "Detener grabación de voz" : "Activar grabación de voz")}
@@ -1881,6 +1797,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                             }
                             handleGenerateCode();
                           }}
+                          tabIndex={0}
                           onFocus={() => speakOnFocus('Enviar mensaje al copiloto')}
                           aria-label="Enviar mensaje al copiloto"
                           onMouseEnter={() => speakOnHover('Enviar mensaje al copiloto')}
@@ -1890,6 +1807,13 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                             '&.Mui-disabled': {
                               color: themeColors.textSecondary,
                               opacity: 0.5
+                            },
+                            // Estilo de foco visible
+                            '&:focus-visible': {
+                              outline: `3px solid ${themeColors.accent}`,
+                              outlineOffset: '2px',
+                              borderRadius: '6px',
+                              backgroundColor: themeColors.hover
                             }
                           }}
                           disabled={!prompt.trim() || loading}
@@ -1980,7 +1904,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                             sx={{ 
                               color: themeColors.text,
                               borderColor: themeColors.border,
-                              backgroundColor: focusedSection === 'buttons' && selectedIndex === 0 ? themeColors.hover : 'transparent',
+                              backgroundColor:  selectedIndex === 0 ? themeColors.hover : 'transparent',
                               '&:hover': {
                                 backgroundColor: themeColors.hover,
                                 borderColor: themeColors.accent
@@ -2003,7 +1927,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                             sx={{ 
                               color: themeColors.text,
                               borderColor: themeColors.border,
-                              backgroundColor: focusedSection === 'buttons' && selectedIndex === 1 ? themeColors.hover : 'transparent',
+                              backgroundColor: selectedIndex === 1 ? themeColors.hover : 'transparent',
                               '&:hover': {
                                 backgroundColor: themeColors.hover,
                                 borderColor: themeColors.accent
@@ -2029,7 +1953,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                             sx={{ 
                               color: themeColors.text,
                               borderColor: themeColors.border,
-                              backgroundColor: focusedSection === 'buttons' && selectedIndex === 2 ? themeColors.hover : 'transparent',
+                              backgroundColor: selectedIndex === 2 ? themeColors.hover : 'transparent',
                               '&:hover': {
                                 backgroundColor: themeColors.hover,
                                 borderColor: themeColors.accent
@@ -2052,7 +1976,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                             sx={{ 
                               color: themeColors.text,
                               borderColor: themeColors.border,
-                              backgroundColor: focusedSection === 'buttons' && selectedIndex === 3 ? themeColors.hover : 'transparent',
+                              backgroundColor: selectedIndex === 3 ? themeColors.hover : 'transparent',
                               '&:hover': {
                                 backgroundColor: themeColors.hover,
                                 borderColor: themeColors.accent
@@ -2065,204 +1989,223 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                       </Box>
                     </Box>
 
-                    {/* Lista de archivos */}
-                    <Box sx={{ 
-                      flex: 1,
-                      overflowY: 'auto',
-                      minHeight: 0
-                    }}>
-                      {files.length === 0 && folders.length === 0 && (
-                        <Typography 
-                          variant="body2" 
-                          sx={{ 
-                            textAlign: 'center', 
-                            py: 2,
-                            color: themeColors.textSecondary,
-                            fontStyle: 'italic'
-                          }}
-                        >
-                          No hay archivos abiertos. Usa los botones de arriba para crear o abrir archivos.
-                        </Typography>
-                      )}
+                {/* En la sección sin estructura de código, reemplazar el bloque que renderiza archivos */}
+                {/* Lista de archivos */}
+                <Box sx={{ 
+                  flex: 1,
+                  overflowY: 'auto',
+                  minHeight: 0
+                }}>
+                  {files.length === 0 && folders.length === 0 && (
+                    <Typography 
+                      variant="body2" 
+                      sx={{ 
+                        textAlign: 'center', 
+                        py: 2,
+                        color: themeColors.textSecondary,
+                        fontStyle: 'italic'
+                      }}
+                    >
+                      No hay archivos abiertos. Usa los botones de arriba para crear o abrir archivos.
+                    </Typography>
+                  )}
 
-                      {/* Renderizar carpetas y archivos */}
-                      {getNavigableElements().map((element, index) => {
-                        if (focusedSection !== 'files') return null;
-                        
-                        const isSelected = selectedIndex === index;
-                        const isCurrentFile = element.type === 'file' && currentFileId === element.id;
-                        
-                        if (element.type === 'folder') {
-                          return (
-                            <Box key={element.id} sx={{ mb: 1 }}>
-                              <Box
-                                sx={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  cursor: 'pointer',
-                                  p: 0.5,
-                                  borderRadius: 1,
-                                  color: themeColors.text,
-                                  backgroundColor: isSelected 
-                                    ? themeColors.accent 
-                                    : 'transparent',
-                                  border: isSelected ? `2px solid ${themeColors.accent}` : '2px solid transparent',
-                                  '&:hover': !isSelected ? {
-                                    backgroundColor: themeColors.hover,
-                                    border: `2px solid ${themeColors.accent}`
-                                  } : {}
-                                }}
-                                onClick={() => toggleFolder(element.id)}
-                                onContextMenu={(e) => handleContextMenu(e, element)}
-                                aria-label={`Carpeta ${element.name}, ${openFolders[element.id] ? 'expandida' : 'colapsada'}, contiene ${element.files.length} archivos`}
-                                onMouseEnter={() => speakOnHover(`Carpeta ${element.name}, ${openFolders[element.id] ? 'expandida' : 'colapsada'}, contiene ${element.files.length} archivos`)}
-                                onMouseLeave={cancelHoverSpeak}
-                              >
-                                {openFolders[element.id] ? (
-                                  <ExpandLessIcon sx={{ color: isSelected ? themeColors.background : themeColors.accent }} />
-                                ) : (
-                                  <ExpandMoreIcon sx={{ color: isSelected ? themeColors.background : themeColors.accent }} />
-                                )}
-                                <Folder sx={{ mr: 1, color: isSelected ? themeColors.background : themeColors.accent }} />
-                                <Typography variant="body2" sx={{ 
-                                  flex: 1, 
-                                  color: isSelected ? themeColors.background : themeColors.text,
-                                  fontWeight: isSelected ? 600 : 400
-                                }}>
-                                  {element.name}
-                                </Typography>
-                                <IconButton 
-                                  size="small" 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleContextMenu(e, element);
+                  {/* Renderizar carpetas */}
+                  {folders.filter(folder => folder && folder.id && folder.name).map((folder) => {
+                    const elements = getNavigableElements('files');
+                    const folderIndex = elements.findIndex(el => el && el.type === 'folder' && el.id === folder.id);
+                    const isFocused = selectedIndex === folderIndex;
+                    
+                    return (
+                      <Box key={folder.id} sx={{ mb: 1 }}>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            cursor: 'pointer',
+                            p: 0.5,
+                            borderRadius: 1,
+                            color: themeColors.text,
+                            backgroundColor: isFocused ? themeColors.accent : 'transparent',
+                            border: isFocused ? `2px solid ${themeColors.accent}` : '2px solid transparent',
+                            '&:hover': !isFocused ? {
+                              backgroundColor: themeColors.hover,
+                              border: `2px solid ${themeColors.accent}`
+                            } : {}
+                          }}
+                          onClick={() => toggleFolder(folder.id)}
+                          onContextMenu={(e) => handleContextMenu(e, folder)}
+                          aria-label={`Carpeta ${folder.name}, ${openFolders[folder.id] ? 'expandida' : 'colapsada'}, contiene ${folder.files?.length || 0} archivos`}
+                          onMouseEnter={() => speakOnHover(`Carpeta ${folder.name}, ${openFolders[folder.id] ? 'expandida' : 'colapsada'}, contiene ${folder.files?.length || 0} archivos`)}
+                          onMouseLeave={cancelHoverSpeak}
+                          tabIndex={0}
+                        >
+                          {openFolders[folder.id] ? (
+                            <ExpandLessIcon sx={{ color: isFocused ? themeColors.background : themeColors.accent }} />
+                          ) : (
+                            <ExpandMoreIcon sx={{ color: isFocused ? themeColors.background : themeColors.accent }} />
+                          )}
+                          <Folder sx={{ mr: 1, color: isFocused ? themeColors.background : themeColors.accent }} />
+                          <Typography variant="body2" sx={{ 
+                            flex: 1, 
+                            color: isFocused ? themeColors.background : themeColors.text,
+                            fontWeight: isFocused ? 600 : 400
+                          }}>
+                            {folder.name}
+                          </Typography>
+                          <IconButton 
+                            size="small" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleContextMenu(e, folder);
+                            }}
+                            aria-label="Más opciones"
+                            sx={{ color: isFocused ? themeColors.background : themeColors.text }}
+                          >
+                            <MoreVertIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                        <Collapse in={openFolders[folder.id]}>
+                          <Box sx={{ ml: 2 }}>
+                            {(folder.files || []).filter(file => file && file.id && file.name).map((file) => {
+                              const fileElements = getNavigableElements();
+                              const fileIndex = fileElements.findIndex(el => 
+                                el && el.type === 'file' && el.id === file.id && el.parentFolder === folder.id
+                              );
+                              const isFileSelected = selectedIndex === fileIndex;
+                              const isCurrentChildFile = currentFileId === file.id;
+                              
+                              return (
+                                <Box
+                                  key={file.id}
+                                  sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    cursor: 'pointer',
+                                    p: 0.5,
+                                    borderRadius: 1,
+                                    color: themeColors.text,
+                                    backgroundColor: isFileSelected 
+                                      ? themeColors.accent 
+                                      : isCurrentChildFile 
+                                        ? themeColors.hover 
+                                        : 'transparent',
+                                    border: (isFileSelected || isCurrentChildFile) ? `2px solid ${themeColors.accent}` : '2px solid transparent',
+                                    '&:hover': !(isFileSelected || isCurrentChildFile) ? {
+                                      backgroundColor: themeColors.hover
+                                    } : {}
                                   }}
-                                  aria-label="Más opciones"
-                                  sx={{ color: isSelected ? themeColors.background : themeColors.text }}
+                                  onClick={() => handleFileClick(file)}
+                                  onContextMenu={(e) => handleContextMenu(e, { ...file, parentFolder: folder.id })}
+                                  aria-label={`Archivo ${file.name}${isCurrentChildFile ? ', actualmente abierto' : ''}`}
+                                  onMouseEnter={() => speakOnHover(`Archivo ${file.name}${isCurrentChildFile ? ', actualmente abierto' : ''}`)}
+                                  onMouseLeave={cancelHoverSpeak}
                                 >
-                                  <MoreVertIcon fontSize="small" />
-                                </IconButton>
-                              </Box>
-                              <Collapse in={openFolders[element.id]}>
-                                <Box sx={{ ml: 2 }}>
-                                  {element.files.map((file) => {
-                                    const fileElements = getNavigableElements();
-                                    const fileIndex = fileElements.findIndex(el => 
-                                      el.type === 'file' && el.id === file.id
-                                    );
-                                    const isFileSelected = selectedIndex === fileIndex;
-                                    const isCurrentChildFile = currentFileId === file.id;
-                                    
-                                    return (
-                                      <Box
-                                        key={file.id}
-                                        sx={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          cursor: 'pointer',
-                                          p: 0.5,
-                                          borderRadius: 1,
-                                          color: themeColors.text,
-                                          backgroundColor: isFileSelected || isCurrentChildFile ? themeColors.hover : 'transparent',
-                                          border: (isFileSelected || isCurrentChildFile) ? `2px solid ${themeColors.accent}` : '2px solid transparent',
-                                          '&:hover': !(isFileSelected || isCurrentChildFile) ? {
-                                            backgroundColor: themeColors.hover
-                                          } : {}
-                                        }}
-                                        onClick={() => handleFileClick(file)}
-                                        onContextMenu={(e) => handleContextMenu(e, { ...file, parentFolder: element.id })}
-                                        aria-label={`Archivo ${file.name}${isCurrentChildFile ? ', actualmente abierto' : ''}`}
-                                        onMouseEnter={() => speakOnHover(`Archivo ${file.name}${isCurrentChildFile ? ', actualmente abierto' : ''}`)}
-                                        onMouseLeave={cancelHoverSpeak}
-                                      >
-                                        <InsertDriveFile sx={{ 
-                                          mr: 1, 
-                                          fontSize: 16, 
-                                          color: (isFileSelected || isCurrentChildFile) ? themeColors.accent : themeColors.info 
-                                        }} />
-                                        <Typography variant="caption" sx={{ 
-                                          flex: 1,
-                                          fontWeight: (isFileSelected || isCurrentChildFile) ? 600 : 400
-                                        }}>
-                                          {file.name}
-                                        </Typography>
-                                        <IconButton 
-                                          size="small" 
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleContextMenu(e, { ...file, parentFolder: element.id });
-                                          }}
-                                          aria-label="Más opciones"
-                                        >
-                                          <MoreVertIcon fontSize="small" />
-                                        </IconButton>
-                                      </Box>
-                                    );
-                                  })}
+                                  <InsertDriveFile sx={{ 
+                                    mr: 1, 
+                                    fontSize: 16, 
+                                    color: isFileSelected 
+                                      ? themeColors.background 
+                                      : isCurrentChildFile 
+                                        ? themeColors.accent 
+                                        : themeColors.info 
+                                  }} />
+                                  <Typography variant="caption" sx={{ 
+                                    flex: 1,
+                                    color: isFileSelected ? themeColors.background : themeColors.text,
+                                    fontWeight: (isFileSelected || isCurrentChildFile) ? 600 : 400
+                                  }}>
+                                    {file.name}
+                                  </Typography>
+                                  <IconButton 
+                                    size="small" 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleContextMenu(e, { ...file, parentFolder: folder.id });
+                                    }}
+                                    aria-label="Más opciones"
+                                    sx={{ color: isFileSelected ? themeColors.background : themeColors.text }}
+                                  >
+                                    <MoreVertIcon fontSize="small" />
+                                  </IconButton>
                                 </Box>
-                              </Collapse>
-                            </Box>
-                          );
-                        } else {
-                          return (
-                            <Box
-                              key={element.id}
-                              sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                cursor: 'pointer',
-                                p: 0.5,
-                                mb: 0.5,
-                                borderRadius: 1,
-                                color: themeColors.text,
-                                backgroundColor: isSelected 
-                                  ? themeColors.accent 
-                                  : isCurrentFile
-                                    ? themeColors.hover 
-                                    : 'transparent',
-                                border: (isSelected || isCurrentFile) ? `2px solid ${themeColors.accent}` : '2px solid transparent',
-                                '&:hover': !(isSelected || isCurrentFile) ? {
-                                  backgroundColor: themeColors.hover,
-                                  border: `2px solid ${themeColors.accent}`
-                                } : {}
-                              }}
-                              onClick={() => handleFileClick(element)}
-                              onContextMenu={(e) => handleContextMenu(e, element)}
-                              aria-label={`Archivo ${element.name}${isCurrentFile ? ', actualmente abierto' : ''}`}
-                              onMouseEnter={() => speakOnHover(`Archivo ${element.name}${isCurrentFile ? ', actualmente abierto' : ''}`)}
-                              onMouseLeave={cancelHoverSpeak}
-                            >
-                              <InsertDriveFile sx={{ 
-                                mr: 1, 
-                                color: isSelected 
-                                  ? themeColors.background 
-                                  : isCurrentFile
-                                    ? themeColors.accent 
-                                    : themeColors.info 
-                              }} />
-                              <Typography variant="body2" sx={{ 
-                                flex: 1, 
-                                color: isSelected ? themeColors.background : themeColors.text,
-                                fontWeight: (isSelected || isCurrentFile) ? 600 : 400
-                              }}>
-                                {element.name}
-                              </Typography>
-                              <IconButton 
-                                size="small" 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleContextMenu(e, element);
-                                }}
-                                aria-label="Más opciones"
-                                sx={{ color: isSelected ? themeColors.background : themeColors.text }}
-                              >
-                                <MoreVertIcon fontSize="small" />
-                              </IconButton>
-                            </Box>
-                          );
-                        }
-                      })}
-                    </Box>
+                              );
+                            })}
+                          </Box>
+                        </Collapse>
+                      </Box>
+                    );
+                  })}
+
+                  {/* Renderizar archivos sin carpeta */}
+                  {files.filter(file => file && file.id && file.name).map((file) => {
+                    const elements = getNavigableElements('files');
+                    const fileIndex = elements.findIndex(el => el && el.type === 'file' && el.id === file.id && !el.parentFolder);
+                    const isSelected = selectedIndex === fileIndex;
+                    const isCurrentFile = currentFileId === file.id;
+                    
+                    return (
+                      <Box
+                        key={file.id}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          cursor: 'pointer',
+                          p: 0.5,
+                          mb: 0.5,
+                          borderRadius: 1,
+                          color: themeColors.text,
+                          backgroundColor: isSelected 
+                            ? themeColors.accent 
+                            : isCurrentFile
+                              ? themeColors.hover 
+                              : 'transparent',
+                          border: (isSelected || isCurrentFile) ? `2px solid ${themeColors.accent}` : '2px solid transparent',
+                          '&:hover': !(isSelected || isCurrentFile) ? {
+                            backgroundColor: themeColors.hover,
+                            border: `2px solid ${themeColors.accent}`
+                          } : {}
+                        }}
+                        onClick={() => handleFileClick(file)}
+                        onContextMenu={(e) => handleContextMenu(e, file)}
+                        aria-label={`Archivo ${file.name}${isCurrentFile ? ', actualmente abierto' : ''}`}
+                        onMouseEnter={() => speakOnHover(`Archivo ${file.name}${isCurrentFile ? ', actualmente abierto' : ''}`)}
+                        onMouseLeave={cancelHoverSpeak}
+                        tabIndex={0}
+                      >
+                        <InsertDriveFile sx={{ 
+                          mr: 1, 
+                          color: isSelected 
+                            ? themeColors.background 
+                            : isCurrentFile
+                              ? themeColors.accent 
+                              : themeColors.info 
+                        }} />
+                        <Typography variant="body2" sx={{ 
+                          flex: 1, 
+                          color: isSelected ? themeColors.background : themeColors.text,
+                          fontWeight: (isSelected || isCurrentFile) ? 600 : 400
+                        }}>
+                          {file.name}
+                        </Typography>
+                        <IconButton 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleContextMenu(e, file);
+                          }}
+                          aria-label="Más opciones"
+                          sx={{ color: isSelected ? themeColors.background : themeColors.text }}
+                        >
+                          <MoreVertIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    );
+                  })}
+                </Box>
+
+
+
                   </Box>
 
                   {/* Panel inferior: Estructura del código - similar ajuste con highlight */}
@@ -2284,6 +2227,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                       backgroundColor: themeColors.surface,
                       flexShrink: 0
                     }}
+                    tabIndex={0}
                     onClick={() => setIsCodeStructureOpen(!isCodeStructureOpen)}
                     aria-label={`Estructura del código con ${codeStructure.length} elementos, ${isCodeStructureOpen ? 'expandida' : 'colapsada'}`}
                     onMouseEnter={() => speakOnHover(`Estructura del código con ${codeStructure.length} elementos, actualmente ${isCodeStructureOpen ? 'expandida' : 'colapsada'}. Click para ${isCodeStructureOpen ? 'colapsar' : 'expandir'}`)}
@@ -2310,11 +2254,12 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                     }}>
                       <List dense sx={{ p: 0 }}>
                         {codeStructure.map((item, index) => {
-                          const isFocused = focusedSection === 'structure' && selectedIndex === index;
+                          const isFocused = selectedIndex === index;
                           
                           return (
                             <ListItem
                               key={index}
+                              tabIndex={0}
                               sx={{
                                 borderBottom: `1px solid ${themeColors.border}`,
                                 py: 1,
@@ -2373,7 +2318,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                 </Split>
               ) : (
                 // Vista sin estructura (similar con highlights)
-                // ...código similar al anterior panel pero sin split...
+                // sin split...
                 <Box sx={{ 
                   display: 'flex', 
                   flexDirection: 'column',
@@ -2425,7 +2370,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                           sx={{ 
                             color: themeColors.text,
                             borderColor: themeColors.border,
-                            backgroundColor: focusedSection === 'buttons' && selectedIndex === 0 ? themeColors.hover : 'transparent',
+                            backgroundColor: selectedIndex === 0 ? themeColors.hover : 'transparent',
                             '&:hover': {
                               backgroundColor: themeColors.hover,
                               borderColor: themeColors.accent
@@ -2448,7 +2393,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                           sx={{ 
                             color: themeColors.text,
                             borderColor: themeColors.border,
-                            backgroundColor: focusedSection === 'buttons' && selectedIndex === 1 ? themeColors.hover : 'transparent',
+                            backgroundColor: selectedIndex === 1 ? themeColors.hover : 'transparent',
                             '&:hover': {
                               backgroundColor: themeColors.hover,
                               borderColor: themeColors.accent
@@ -2474,7 +2419,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                           sx={{ 
                             color: themeColors.text,
                             borderColor: themeColors.border,
-                            backgroundColor: focusedSection === 'buttons' && selectedIndex === 2 ? themeColors.hover : 'transparent',
+                            backgroundColor: selectedIndex === 2 ? themeColors.hover : 'transparent',
                             '&:hover': {
                               backgroundColor: themeColors.hover,
                               borderColor: themeColors.accent
@@ -2497,7 +2442,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                           sx={{ 
                             color: themeColors.text,
                             borderColor: themeColors.border,
-                            backgroundColor: focusedSection === 'buttons' && selectedIndex === 3 ? themeColors.hover : 'transparent',
+                            backgroundColor: selectedIndex === 3 ? themeColors.hover : 'transparent',
                             '&:hover': {
                               backgroundColor: themeColors.hover,
                               borderColor: themeColors.accent
@@ -2532,7 +2477,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
 
                     {/* Renderizar carpetas y archivos */}
                     {getNavigableElements().map((element, index) => {
-                      const isFocused = focusedSection === 'files' && selectedIndex === index;
+                      const isFocused = selectedIndex === index;
                       const isCurrentFile = element.type === 'file' && currentFileId === element.id;
                       
                       if (element.type === 'folder') {
@@ -2598,7 +2543,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
                                   const fileIndex = fileElements.findIndex(el => 
                                     el.type === 'file' && el.id === file.id && el.parentFolder === element.id
                                   );
-                                  const isFileFocused = focusedSection === 'files' && selectedIndex === fileIndex;
+                                  const isFileFocused = selectedIndex === fileIndex;
                                   const isCurrentChildFile = currentFileId === file.id;
                                   
                                   return (
@@ -2853,10 +2798,13 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
         <DialogContent>
           <DialogContentText 
             id="dialog-description"
-            sx={{ color: themeColors.textSecondary }}
+            sx={{ color: themeColors.textSecondary, mb: 1 }}
             tabIndex={-1}
           >
-            Ingresa el nombre para {isFile ? 'el archivo' : 'la carpeta'}:
+            {isFile 
+              ? 'Ingresa el nombre para el archivo. Solo se permiten extensiones .txt o .py. Si no escribes extensión, se usará .txt por defecto.'
+              : 'Ingresa el nombre para la carpeta:'
+            }
           </DialogContentText>
           <TextField
             inputRef={createDialogInputRef}
@@ -2878,7 +2826,8 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
             }}
             onFocus={() => {
               const dialogType = isFile ? 'archivo' : 'carpeta';
-              speakOnFocus(`Campo de nombre para ${dialogType}. ${newName ? `Nombre actual: ${newName}` : 'Campo vacío'}. Escribe el nombre y presiona Enter para crear`);
+              const extensionInfo = isFile ? '. Solo se permiten extensiones .txt o .py' : '';
+              speakOnFocus(`Campo de nombre para ${dialogType}. ${newName ? `Nombre actual: ${newName}` : 'Campo vacío'}. Escribe el nombre y presiona Enter para crear${extensionInfo}`);
             }}
             onBlur={() => {
               if (typingTimeoutRef.current) {
@@ -2887,6 +2836,7 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
             }}
             aria-label={`Nombre del ${isFile ? 'archivo' : 'carpeta'}`}
             aria-describedby="dialog-description"
+            placeholder={isFile ? "ejemplo.py o ejemplo.txt" : "Nombre de la carpeta"}
             sx={{
               '& .MuiOutlinedInput-root': {
                 color: themeColors.text,
@@ -3206,6 +3156,77 @@ const ChatHistory = ({ chatHistory, themeColors, focusedMessageIndex, onMessageF
             autoFocus
             sx={{ 
               backgroundColor: themeColors.accent,
+              '&:hover': {
+                backgroundColor: themeColors.accent,
+                filter: 'brightness(0.9)'
+              }
+            }}
+          >
+            Entendido
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Dialog de error de extensión */}
+      <Dialog 
+        open={extensionErrorOpen} 
+        onClose={() => {
+          stop();
+          setExtensionErrorOpen(false);
+          speak('Mensaje cerrado');
+        }}
+        aria-labelledby="extension-error-title"
+        aria-describedby="extension-error-description"
+        disableRestoreFocus
+        PaperProps={{
+          sx: {
+            backgroundColor: themeColors.surface,
+            color: themeColors.text,
+            border: `2px solid ${themeColors.error || '#d32f2f'}`
+          }
+        }}
+      >
+        <DialogTitle 
+          id="extension-error-title" 
+          sx={{ color: themeColors.error || '#d32f2f', display: 'flex', alignItems: 'center' }}
+          tabIndex={-1}
+        >
+          <WarningIcon sx={{ mr: 1 }} />
+          Extensión no permitida
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText 
+            id="extension-error-description"
+            sx={{ color: themeColors.text }}
+            tabIndex={-1}
+          >
+            Solo se permiten archivos con extensión <strong>.txt</strong> (texto) o <strong>.py</strong> (Python).
+            Por favor, usa una de estas extensiones.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              stop();
+              setExtensionErrorOpen(false);
+              speak('Mensaje cerrado');
+              // Volver a enfocar el input correspondiente
+              setTimeout(() => {
+                if (dialogOpen && createDialogInputRef.current) {
+                  createDialogInputRef.current.focus();
+                } else if (renameDialogOpen && renameDialogInputRef.current) {
+                  renameDialogInputRef.current.focus();
+                }
+              }, 100);
+            }}
+            onFocus={() => speakOnFocus('Botón entendido. Presiona Enter para cerrar y corregir el nombre')}
+            onMouseEnter={() => speakOnHover('Entendido')}
+            onMouseLeave={cancelHoverSpeak}
+            variant="contained"
+            autoFocus
+            sx={{ 
+              backgroundColor: themeColors.accent,
+              color: themeColors.background,
               '&:hover': {
                 backgroundColor: themeColors.accent,
                 filter: 'brightness(0.9)'

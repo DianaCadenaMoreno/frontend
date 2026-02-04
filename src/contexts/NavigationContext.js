@@ -24,13 +24,13 @@ export const NavigationProvider = ({ children }) => {
   // Registrar componente
   const registerComponent = useCallback((name, ref) => {
     componentRefs.current[name] = ref;
-    console.log(`Componente registrado: ${name}`, ref);
+    // console.log(`Componente registrado: ${name}`, ref);
   }, []);
 
   // Desregistrar componente
   const unregisterComponent = useCallback((name) => {
     delete componentRefs.current[name];
-    console.log(`Componente desregistrado: ${name}`);
+    // console.log(`Componente desregistrado: ${name}`);
   }, []);
 
   // Enfocar componente
@@ -119,12 +119,71 @@ export const NavigationProvider = ({ children }) => {
     'bienvenida': 'welcome',
     'ayuda inicial': 'welcome',
     'pantalla de bienvenida': 'welcome',
+
+    // Comandos de ejecución y transcripción
+    'ejecutar': 'editor-execute',
+    'ejecutar código': 'editor-execute',
+    'correr código': 'editor-execute',
+    'correr': 'editor-execute',
+    'run': 'editor-execute',
+    'transcribir': 'editor-transcribe',
+    'transcripción': 'editor-transcribe',
+    'dictar': 'editor-transcribe',
+    'voz a código': 'editor-transcribe',
+    'detener': 'editor-stop',
+    'parar': 'editor-stop',
+    'stop': 'editor-stop',
+    'detener ejecución': 'editor-stop',
+    'cancelar': 'editor-cancel',
+    'abortar': 'editor-cancel',
+    'cancelar ejecución': 'editor-cancel',
+    'guardar': 'save-file',
+    'guardar archivo': 'save-file',
   };
 
-  // Manejar comandos - ACTUALIZADO para usar componentRefs.current directamente
+  // componentRefs.current directamente
   const handleCommand = useCallback((action) => {
     console.log(`Ejecutando comando: ${action}`);
     console.log('Componentes registrados disponibles:', Object.keys(componentRefs.current));
+    
+    // Manejar comandos 
+    switch(action) {
+      case 'toggle-contrast':
+        window.dispatchEvent(new CustomEvent('codeflow-toggle-contrast'));
+        return;
+      case 'toggle-screen-reader':
+        window.dispatchEvent(new CustomEvent('codeflow-toggle-screenreader'));
+        return;
+      case 'zoom-in':
+        window.dispatchEvent(new CustomEvent('codeflow-zoom-in'));
+        return;
+      case 'zoom-out':
+        window.dispatchEvent(new CustomEvent('codeflow-zoom-out'));
+        return;
+      case 'show-help':
+        window.dispatchEvent(new CustomEvent('codeflow-show-help'));
+        return;
+      case 'welcome':
+        window.dispatchEvent(new CustomEvent('codeflow-show-welcome'));
+        return;
+      case 'save-file':
+        window.dispatchEvent(new CustomEvent('codeflow-save-file'));
+        return;
+      case 'editor-execute':
+        window.dispatchEvent(new CustomEvent('codeflow-execute'));
+        return;
+      case 'editor-transcribe':
+        window.dispatchEvent(new CustomEvent('codeflow-transcribe'));
+        return;
+      case 'editor-stop':
+        window.dispatchEvent(new CustomEvent('codeflow-stop'));
+        return;
+      case 'editor-cancel':
+        window.dispatchEvent(new CustomEvent('codeflow-cancel'));
+        return;
+      default:
+        break;
+    }
     
     const [component, subAction] = action.split('-');
     
@@ -153,7 +212,7 @@ export const NavigationProvider = ({ children }) => {
       console.log('Buscando en:', action, 'o', component);
       console.log('Refs disponibles:', Object.keys(componentRefs.current));
     }
-  }, []); // Sin dependencias porque usa componentRefs.current directamente
+  }, []);
 
   // Procesar comando de voz
   const processVoiceCommand = useCallback((command) => {
@@ -309,11 +368,101 @@ export const NavigationProvider = ({ children }) => {
   // Manejador global de teclado
   useEffect(() => {
     const handleGlobalKeyDown = (event) => {
-      // Alt + B para volver a Welcome
+      // Alt + B para volver a Welcome 
       if (event.altKey && (event.key === 'b' || event.key === 'B')) {
         event.preventDefault();
+        event.stopPropagation();
         console.log('Atajo: Alt+B - Welcome');
-        focusComponent('welcome');
+        window.dispatchEvent(new CustomEvent('codeflow-show-welcome'));
+        return;
+      }
+
+      // Alt + L para alternar lector de pantalla
+      if (event.altKey && (event.key === 'l' || event.key === 'L')) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('Atajo: Alt+L - Toggle Screen Reader');
+        window.dispatchEvent(new CustomEvent('codeflow-toggle-screenreader'));
+        return;
+      }
+
+      // Alt + C para alternar contraste
+      if (event.altKey && !event.ctrlKey && (event.key === 'c' || event.key === 'C')) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('Atajo: Alt+C - Toggle Contraste');
+        window.dispatchEvent(new CustomEvent('codeflow-toggle-contrast'));
+        return;
+      }
+
+      // Alt + + para zoom in (también = porque + está en la misma tecla)
+      if (event.altKey && (event.key === '+' || event.key === '=' || event.key === 'Add')) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('Atajo: Alt++ - Zoom In');
+        window.dispatchEvent(new CustomEvent('codeflow-zoom-in'));
+        return;
+      }
+
+      // Alt + - para zoom out
+      if (event.altKey && (event.key === '-' || event.key === 'Subtract')) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('Atajo: Alt+- - Zoom Out');
+        window.dispatchEvent(new CustomEvent('codeflow-zoom-out'));
+        return;
+      }
+
+      // Alt + S para guardar archivo (solo si hay archivo abierto)
+      if (event.altKey && (event.key === 's' || event.key === 'S')) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('Atajo: Alt+S - Guardar archivo');
+        window.dispatchEvent(new CustomEvent('codeflow-save-file'));
+        return;
+      }
+
+      // F5 para ejecutar código
+      if (event.key === 'F5' && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('Atajo: F5 - Ejecutar código');
+        window.dispatchEvent(new CustomEvent('codeflow-execute'));
+        return;
+      }
+
+      // F6 para transcribir voz
+      if (event.key === 'F6' && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('Atajo: F6 - Transcribir voz');
+        window.dispatchEvent(new CustomEvent('codeflow-transcribe'));
+        return;
+      }
+
+      // F7 para detener ejecución
+      if (event.key === 'F7' && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('Atajo: F7 - Detener ejecución');
+        window.dispatchEvent(new CustomEvent('codeflow-stop'));
+        return;
+      }
+
+      // F8 para cancelar ejecución (abortar WebSocket)
+      if (event.key === 'F8' && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('Atajo: F8 - Cancelar ejecución');
+        window.dispatchEvent(new CustomEvent('codeflow-cancel'));
+        return;
+      }
+
+      // Escape para detener/cancelar
+      if (event.key === 'Escape' && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+        // No prevenir default aquí para permitir otros usos de Escape
+        console.log('Atajo: Escape - Cancelar operación actual');
+        window.dispatchEvent(new CustomEvent('codeflow-cancel'));
         return;
       }
       
@@ -327,6 +476,7 @@ export const NavigationProvider = ({ children }) => {
             break;
           case '2':
             event.preventDefault();
+            event.stopPropagation();
             console.log('Atajo: Alt+2 - FileManager');
             focusComponent('filemanager');
             break;
@@ -340,12 +490,24 @@ export const NavigationProvider = ({ children }) => {
             console.log('Atajo: Alt+4 - Terminal');
             focusComponent('terminal');
             break;
-          case 'h':
-          case 'H':
+          case 'a':
+          case 'A':
             event.preventDefault();
-            console.log('Atajo: Alt+H - Ayuda');
+            console.log('Atajo: Alt+A - Ayuda');
             handleCommand('show-help');
             break;
+          case 'e':
+          // case 'E':
+          //   event.preventDefault();
+          //   console.log('Atajo: Alt+E - Ejecutar');
+          //   window.dispatchEvent(new CustomEvent('codeflow-execute'));
+          //   break;
+          // case 't':
+          // case 'T':
+          //   event.preventDefault();
+          //   console.log('Atajo: Alt+T - Transcribir');
+          //   window.dispatchEvent(new CustomEvent('codeflow-transcribe'));
+          //   break;
           default:
             break;
         }
@@ -369,10 +531,15 @@ export const NavigationProvider = ({ children }) => {
             console.log(' Atajo: Ctrl+Alt+O - Abrir archivo');
             handleCommand('filemanager-open-file');
             break;
-          case 'c':
+          case 'e':
             event.preventDefault();
-            console.log(' Atajo: Ctrl+Alt+C - Chat');
-            handleCommand('filemanager-chat');
+            console.log(' Atajo: Ctrl+Alt+E - Ejecutar código');
+            window.dispatchEvent(new CustomEvent('codeflow-execute'));
+            break;
+          case 'x':
+            event.preventDefault();
+            console.log(' Atajo: Ctrl+Alt+X - Cancelar ejecución');
+            window.dispatchEvent(new CustomEvent('codeflow-cancel'));
             break;
           default:
             break;
@@ -390,12 +557,12 @@ export const NavigationProvider = ({ children }) => {
           case 'F2':
             event.preventDefault();
             console.log(' Atajo: F2 - Toggle Screen Reader');
-            handleCommand('toggle-screen-reader');
+            window.dispatchEvent(new CustomEvent('codeflow-toggle-screenreader'));
             break;
           case 'F3':
             event.preventDefault();
             console.log(' Atajo: F3 - Toggle Contraste');
-            handleCommand('toggle-contrast');
+            window.dispatchEvent(new CustomEvent('codeflow-toggle-contrast'));
             break;
           default:
             break;
@@ -403,8 +570,9 @@ export const NavigationProvider = ({ children }) => {
       }
     };
 
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    // Usar capture phase para interceptar antes que otros handlers
+    window.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
   }, [focusComponent, handleCommand]);
 
   const value = {

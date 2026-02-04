@@ -1,16 +1,56 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Box, Tabs, Tab, IconButton } from '@mui/material';
 import Terminal from './Terminal';
 import Debug from './Debug';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { useAppNavigation } from '../contexts/NavigationContext';
+import { useScreenReader } from '../contexts/ScreenReaderContext';
 
 function TerminalTabs({ contrast, output, pid, onDebug, collapsed, onToggleCollapse, textEditorRef, ...props }) { 
   const [value, setValue] = React.useState(0);
+  const tabsRef = useRef(null);
+  const { registerComponent, unregisterComponent } = useAppNavigation();
+  const { speak } = useScreenReader();
 
   const handleChange = (event, newValue) => {
     setValue(newValue);
+    speak(newValue === 0 ? 'Terminal seleccionada' : 'Depurador seleccionado');
   };
+
+  // Registrar componente en el sistema de navegación
+  useEffect(() => {
+    const terminalTabsAPI = {
+      focus: () => {
+        if (tabsRef.current) {
+          tabsRef.current.focus();
+          speak(`Panel de terminal y depurador. Pestaña ${value === 0 ? 'Terminal' : 'Depurador'} activa. Usa las flechas para cambiar de pestaña`);
+        }
+      },
+      switchToTerminal: () => {
+        setValue(0);
+        if (tabsRef.current) {
+          tabsRef.current.focus();
+          speak('Terminal seleccionada');
+        }
+      },
+      switchToDebug: () => {
+        setValue(1);
+        if (tabsRef.current) {
+          tabsRef.current.focus();
+          speak('Depurador seleccionado');
+        }
+      }
+    };
+
+    registerComponent('terminal-tabs', terminalTabsAPI);
+    registerComponent('terminal', terminalTabsAPI); // Alias para Alt+4
+
+    return () => {
+      unregisterComponent('terminal-tabs');
+      unregisterComponent('terminal');
+    };
+  }, [registerComponent, unregisterComponent, speak, value]);
 
   return (
     <Box 
@@ -36,14 +76,40 @@ function TerminalTabs({ contrast, output, pid, onDebug, collapsed, onToggleColla
       }}>
         {!collapsed && (
           <Tabs 
+            ref={tabsRef}
             value={value} 
             onChange={handleChange} 
-            aria-label="terminal tabs" 
+            aria-label="Terminal y depurador" 
             textColor={contrast === 'high-contrast' ? 'inherit' : 'primary'}
-            sx={{ flex: 1 }}
+            sx={{ 
+              flex: 1,
+              '& .MuiTab-root:focus': {
+                outline: '2px solid',
+                outlineColor: contrast === 'high-contrast' ? '#fff' : '#1976d2',
+                outlineOffset: '-2px'
+              }
+            }}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowLeft' && value === 1) {
+                e.preventDefault();
+                handleChange(e, 0);
+              } else if (e.key === 'ArrowRight' && value === 0) {
+                e.preventDefault();
+                handleChange(e, 1);
+              }
+            }}
           >
-            <Tab label="Terminal" />
-            <Tab label="Depurar" />
+            <Tab 
+              label="Terminal" 
+              aria-label="Pestaña de terminal"
+              onFocus={() => speak('Pestaña Terminal')}
+            />
+            <Tab 
+              label="Depurar" 
+              aria-label="Pestaña de depurador"
+              onFocus={() => speak('Pestaña Depurador')}
+            />
           </Tabs>
         )}
         
@@ -51,10 +117,15 @@ function TerminalTabs({ contrast, output, pid, onDebug, collapsed, onToggleColla
           onClick={onToggleCollapse}
           size="small"
           aria-label={collapsed ? "Expandir terminal" : "Colapsar terminal"}
+          onFocus={() => speak(collapsed ? "Expandir terminal" : "Colapsar terminal")}
           sx={{ 
             ml: collapsed ? 0 : 1,
             mr: 1,
-            color: contrast === 'high-contrast' ? '#fff' : 'inherit'
+            color: contrast === 'high-contrast' ? '#fff' : 'inherit',
+            '&:focus': {
+              outline: '2px solid',
+              outlineColor: contrast === 'high-contrast' ? '#fff' : '#1976d2'
+            }
           }}
         >
           {collapsed ? <ExpandMoreIcon /> : <ExpandLessIcon />}
@@ -77,7 +148,7 @@ function TerminalTabs({ contrast, output, pid, onDebug, collapsed, onToggleColla
         </Box>
       )}
 
-      {/* Vista colapsada - mostrar solo una línea con información básica */}
+      {/* Vista colapsada */}
       {collapsed && (
         <Box sx={{ 
           p: 1, 
@@ -86,7 +157,7 @@ function TerminalTabs({ contrast, output, pid, onDebug, collapsed, onToggleColla
           fontSize: '0.75rem',
           textAlign: 'center'
         }}>
-          {/* {value === 0 ? 'Terminal listo' : 'Depurador listo'} */}
+          {/* Contenido colapsado */}
         </Box>
       )}
     </Box>

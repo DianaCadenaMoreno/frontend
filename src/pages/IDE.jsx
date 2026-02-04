@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Split from 'react-split';
 import Navbar from '../components/Navbar';
 import FileManager from '../components/FileManager';
@@ -8,8 +8,11 @@ import '../styles/split.css';
 import Zoom from '../components/Zoom';
 import AppearanceModal from '../components/AppearanceModal';
 import WelcomeScreen from '../components/Welcome';
+import HelpScreen from '../components/HelpScreen';
+import UserManualScreen from '../components/UserManualScreen';
 import Magnifier from '../pages/prueba2';
 import { useInteractionMode } from '../contexts/InteractionModeContext';
+import { useScreenReader } from '../contexts/ScreenReaderContext';
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -27,7 +30,7 @@ function IDE() {
   const [editorContent, setEditorContent] = React.useState('');
   const [fileManagerCollapsed, setFileManagerCollapsed] = useState(false);
   const [terminalCollapsed, setTerminalCollapsed] = useState(false);
-  const [screenReaderEnabled, setScreenReaderEnabled] = React.useState(true); // Nuevo estado
+  const [screenReaderEnabled, setScreenReaderEnabled] = React.useState(true);
 
   const navbarRef = useRef(null);
   const fileManagerRef = useRef(null);
@@ -41,6 +44,14 @@ function IDE() {
   const [currentFileName, setCurrentFileName] = React.useState('');
   const [currentFileId, setCurrentFileId] = React.useState(null);
   const [unsavedChanges, setUnsavedChanges] = React.useState(false);
+  const { speak, announce, toggle: toggleScreenReaderContext, enabled: screenReaderContextEnabled } = useScreenReader();
+  
+  // Estado para controlar si se debe mostrar Welcome manualmente
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+  const helpRef = useRef(null);
+  const manualRef = useRef(null);
 
   const handleOpenAppearanceModal = () => setIsAppearanceModalOpen(true);
   const handleCloseAppearanceModal = () => setIsAppearanceModalOpen(false);
@@ -50,6 +61,11 @@ function IDE() {
     setCurrentFileName(fileName);
     setCurrentFileId(fileId);
     setUnsavedChanges(false);
+    // Cuando se abre un archivo, salir del modo Welcome
+    setShowWelcome(false);
+    setShowHelp(false);
+    setShowManual(false);
+    setHasFiles(true);
   };
 
   const handleEditorContentChange = (content) => {
@@ -57,14 +73,22 @@ function IDE() {
     setUnsavedChanges(true);
   };
 
-  const handleSaveFile = React.useCallback(() => {
+  const handleSaveFile = useCallback(() => {
     if (!currentFileId) {
-      console.warn('No hay archivo activo para guardar');
+      if (screenReaderEnabled && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance('No hay archivo abierto para guardar');
+        utterance.lang = 'es-ES';
+        utterance.rate = 1;
+        window.speechSynthesis.speak(utterance);
+      }
       return;
     }
 
     const files = JSON.parse(localStorage.getItem('files')) || [];
     const folders = JSON.parse(localStorage.getItem('folders')) || [];
+
+    let saved = false;
 
     // Buscar archivo en la lista principal
     let fileIndex = files.findIndex(f => f.id === currentFileId);
@@ -72,34 +96,177 @@ function IDE() {
       files[fileIndex].content = editorContent;
       files[fileIndex].lastModified = new Date().toISOString();
       localStorage.setItem('files', JSON.stringify(files));
-      setUnsavedChanges(false);
-      
-      // Anunciar guardado
-      if (screenReaderEnabled) {
-        const utterance = new SpeechSynthesisUtterance(`Archivo ${currentFileName} guardado exitosamente`);
-        window.speechSynthesis.speak(utterance);
-      }
-      return;
+      saved = true;
     }
 
     // Buscar en carpetas
-    for (let folder of folders) {
-      fileIndex = folder.files.findIndex(f => f.id === currentFileId);
-      if (fileIndex !== -1) {
-        folder.files[fileIndex].content = editorContent;
-        folder.files[fileIndex].lastModified = new Date().toISOString();
-        localStorage.setItem('folders', JSON.stringify(folders));
-        setUnsavedChanges(false);
-        
-        // Anunciar guardado
-        if (screenReaderEnabled) {
-          const utterance = new SpeechSynthesisUtterance(`Archivo ${currentFileName} guardado exitosamente`);
-          window.speechSynthesis.speak(utterance);
+    if (!saved) {
+      for (let folder of folders) {
+        if (folder.files) {
+          const folderFileIndex = folder.files.findIndex(f => f.id === currentFileId);
+          if (folderFileIndex !== -1) {
+            folder.files[folderFileIndex].content = editorContent;
+            folder.files[folderFileIndex].lastModified = new Date().toISOString();
+            localStorage.setItem('folders', JSON.stringify(folders));
+            saved = true;
+            break;
+          }
         }
-        return;
       }
     }
+
+    if (saved) {
+      setUnsavedChanges(false);
+      if (screenReaderEnabled && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(`Archivo ${currentFileName} guardado correctamente`);
+        utterance.lang = 'es-ES';
+        utterance.rate = 1;
+        window.speechSynthesis.speak(utterance);
+      }
+      // Disparar evento para actualizar FileManager
+      window.dispatchEvent(new CustomEvent('file-saved', { detail: { fileId: currentFileId } }));
+    }
   }, [currentFileId, editorContent, currentFileName, screenReaderEnabled]);
+
+  // Manejadores de eventos globales para atajos de teclado
+  useEffect(() => {
+    // Mostrar Welcome (Alt+B)
+    const handleShowWelcome = () => {
+      // Solo cambiar el estado de showWelcome, no forzar enfoque
+      setShowHelp(false);
+      setShowManual(false);
+      setShowWelcome(true);
+      setHasFiles(false);
+      
+      // Enfocar el componente de bienvenida después de un pequeño delay
+      setTimeout(() => {
+        if (welcomeRef.current?.focus) {
+          welcomeRef.current.focus();
+        }
+      }, 100);
+      
+      if (screenReaderContextEnabled) {
+        announce('Pantalla de bienvenida abierta');
+      }
+    };
+
+    // Mostrar Help (Alt+A)
+    const handleShowHelp = () => {
+      setShowHelp(true);
+      setShowWelcome(false); // Cerrar welcome si está abierta
+      setShowManual(false);
+      
+      setTimeout(() => {
+        if (helpRef.current?.focus) {
+          helpRef.current.focus();
+        }
+      }, 100);
+      
+      if (screenReaderContextEnabled) {
+        announce('Pantalla de ayuda abierta');
+      }
+    };
+
+    // Mostrar Manual de Usuario
+    const handleShowManual = () => {
+      setShowWelcome(false);
+      setShowHelp(false);
+      setShowManual(true);
+      
+      setTimeout(() => {
+        if (manualRef.current?.focus) {
+          manualRef.current.focus();
+        }
+      }, 100);
+      
+      if (screenReaderContextEnabled) {
+        announce('Manual de usuario abierto');
+      }
+    };
+
+    // Toggle Screen Reader (Alt+L)
+    const handleToggleScreenReader = () => {
+      toggleScreenReaderContext();
+      const newState = !screenReaderContextEnabled;
+      setScreenReaderEnabled(newState);
+      
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(
+          newState ? 'Lector de pantalla activado' : 'Lector de pantalla desactivado'
+        );
+        utterance.lang = 'es-ES';
+        utterance.rate = 1;
+        window.speechSynthesis.speak(utterance);
+      }
+    };
+
+    // Toggle Contrast (Alt+C)
+    const handleToggleContrast = () => {
+      setContrast(prev => {
+        const newContrast = prev === 'normal' ? 'high-contrast' : 'normal';
+        if (screenReaderContextEnabled) {
+          announce(newContrast === 'high-contrast' ? 'Alto contraste activado' : 'Contraste normal activado');
+        }
+        return newContrast;
+      });
+    };
+
+    // Zoom In (Alt++)
+    const handleZoomIn = () => {
+      setScale(prev => {
+        const newScale = Math.min(prev + 0.1, 3);
+        if (screenReaderContextEnabled) {
+          announce(`Zoom aumentado a ${Math.round(newScale * 100)} por ciento`);
+        }
+        return newScale;
+      });
+    };
+
+    // Zoom Out (Alt+-)
+    const handleZoomOut = () => {
+      setScale(prev => {
+        const newScale = Math.max(prev - 0.1, 1);
+        if (screenReaderContextEnabled) {
+          announce(`Zoom reducido a ${Math.round(newScale * 100)} por ciento`);
+        }
+        return newScale;
+      });
+    };
+
+    // Guardar archivo (Alt+S)
+    const handleSaveFileEvent = () => {
+      if (currentFileId) {
+        handleSaveFile();
+      } else {
+        if (screenReaderContextEnabled) {
+          announce('No hay archivo abierto para guardar');
+        }
+      }
+    };
+
+    // Registrar listeners
+    window.addEventListener('codeflow-show-welcome', handleShowWelcome);
+    window.addEventListener('codeflow-show-help', handleShowHelp);
+    window.addEventListener('codeflow-show-manual', handleShowManual);
+    window.addEventListener('codeflow-toggle-screenreader', handleToggleScreenReader);
+    window.addEventListener('codeflow-toggle-contrast', handleToggleContrast);
+    window.addEventListener('codeflow-zoom-in', handleZoomIn);
+    window.addEventListener('codeflow-zoom-out', handleZoomOut);
+    window.addEventListener('codeflow-save-file', handleSaveFileEvent);
+
+    return () => {
+      window.removeEventListener('codeflow-show-welcome', handleShowWelcome);
+      window.removeEventListener('codeflow-show-help', handleShowHelp);
+      window.removeEventListener('codeflow-show-manual', handleShowManual);
+      window.removeEventListener('codeflow-toggle-screenreader', handleToggleScreenReader);
+      window.removeEventListener('codeflow-toggle-contrast', handleToggleContrast);
+      window.removeEventListener('codeflow-zoom-in', handleZoomIn);
+      window.removeEventListener('codeflow-zoom-out', handleZoomOut);
+      window.removeEventListener('codeflow-save-file', handleSaveFileEvent);
+    };
+  }, [currentFileId, handleSaveFile, screenReaderContextEnabled, toggleScreenReaderContext, announce]);
 
   // Aplicar estilos globales cuando cambien las configuraciones
   useEffect(() => {
@@ -110,7 +277,7 @@ function IDE() {
       }
     `;
 
-    // Cursor para elementos interactivos: mano con dedo señalador blanca con borde negro
+    // Cursor para elementos interactivos
     const pointerCursor = `
       button, a, input[type="button"], input[type="submit"], select, [role="button"], 
       .MuiButton-root, .MuiIconButton-root, .MuiTab-root, .MuiMenuItem-root, 
@@ -120,7 +287,7 @@ function IDE() {
       }
     `;
 
-    // Cursor para campos de texto: I-beam blanca con borde negro
+    // Cursor para campos de texto
     const textCursor = `
       input[type="text"], input[type="password"], input[type="email"], 
       input[type="search"], input[type="tel"], input[type="url"], 
@@ -129,25 +296,17 @@ function IDE() {
       }
     `;
 
-    // Cursor para gutters horizontales (col-resize)
+    // Cursor para gutters horizontales
     const colResizeCursor = `
       .gutter-horizontal {
         cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="${cursorSize}" height="${cursorSize}" viewBox="0 0 24 24"><defs><filter id="shadow4"><feDropShadow dx="0.5" dy="0.5" stdDeviation="0.5" flood-color="black"/></filter></defs><path fill="white" stroke="black" stroke-width="1.5" filter="url(%23shadow4)" d="M8,18H11V15H2V13H22V15H13V18H16L12,22L8,18M12,2L8,6H11V9H2V11H22V9H13V6H16L12,2Z"/></svg>') ${cursorSize/2} ${cursorSize/2}, col-resize !important;
       }
-      
-      .gutter-horizontal:active {
-        cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="${cursorSize}" height="${cursorSize}" viewBox="0 0 24 24"><defs><filter id="shadow5"><feDropShadow dx="0.5" dy="0.5" stdDeviation="0.5" flood-color="black"/></filter></defs><path fill="white" stroke="black" stroke-width="2" filter="url(%23shadow5)" d="M8,18H11V15H2V13H22V15H13V18H16L12,22L8,18M12,2L8,6H11V9H2V11H22V9H13V6H16L12,2Z"/></svg>') ${cursorSize/2} ${cursorSize/2}, col-resize !important;
-      }
     `;
 
-    // Cursor para gutters verticales (row-resize)
+    // Cursor para gutters verticales
     const rowResizeCursor = `
       .gutter-vertical {
         cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="${cursorSize}" height="${cursorSize}" viewBox="0 0 24 24"><defs><filter id="shadow6"><feDropShadow dx="0.5" dy="0.5" stdDeviation="0.5" flood-color="black"/></filter></defs><path fill="white" stroke="black" stroke-width="1.5" filter="url(%23shadow6)" d="M18,16V13H15V22H13V2H15V11H18V8L22,12L18,16M2,12L6,16V13H9V22H11V2H9V11H6V8L2,12Z"/></svg>') ${cursorSize/2} ${cursorSize/2}, row-resize !important;
-      }
-      
-      .gutter-vertical:active {
-        cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="${cursorSize}" height="${cursorSize}" viewBox="0 0 24 24"><defs><filter id="shadow7"><feDropShadow dx="0.5" dy="0.5" stdDeviation="0.5" flood-color="black"/></filter></defs><path fill="white" stroke="black" stroke-width="2" filter="url(%23shadow7)" d="M18,16V13H15V22H13V2H15V11H18V8L22,12L18,16M2,12L6,16V13H9V22H11V2H9V11H6V8L2,12Z"/></svg>') ${cursorSize/2} ${cursorSize/2}, row-resize !important;
       }
     `;
 
@@ -158,7 +317,6 @@ function IDE() {
       }
     `;
 
-    // Crear o actualizar el style element
     let styleElement = document.getElementById('custom-styles');
     if (!styleElement) {
       styleElement = document.createElement('style');
@@ -167,46 +325,8 @@ function IDE() {
     }
     styleElement.textContent = normalCursor + pointerCursor + textCursor + colResizeCursor + rowResizeCursor + fontStyle;
 
-    return () => {
-      // Cleanup si es necesario
-    };
+    return () => {};
   }, [cursorSize, fontSize]);
-
-
-  const handleKeyDown = (event) => {
-    if (event.altKey && event.key === 's') {
-      event.preventDefault();
-      handleSaveFile();
-      return;
-    }
-
-    if (event.altKey) {
-      switch (event.key) {
-        case '1':
-          if (navbarRef.current) {
-            navbarRef.current.openArchivosMenu(event);
-          }
-          break;
-        case '2':
-          if (fileManagerRef.current) {
-            fileManagerRef.current.focus();
-          }
-          break;
-        case '3':
-          if (textEditorRef.current) {
-            textEditorRef.current.focusEditor();
-          }
-          break;
-        case '4':
-          if (terminalTabsRef.current) {
-            terminalTabsRef.current.focus();
-          }
-          break;
-        default:
-          break;
-      }
-    }
-  };
 
   // Speech Recognition setup
   useEffect(() => {
@@ -235,66 +355,8 @@ function IDE() {
       return () => {
         recognition.stop();
       };
-    } else {
-      console.warn('SpeechRecognition no es compatible con este navegador.');
     }
   }, []);
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, []);
-
-  // Verificar si hay archivos y manejar enfoque inicial
-  useEffect(() => {
-    const checkFiles = () => {
-      const files = JSON.parse(localStorage.getItem('files')) || [];
-      const folders = JSON.parse(localStorage.getItem('folders')) || [];
-      const totalFiles = files.length + folders.reduce((acc, f) => acc + f.files.length, 0);
-      
-      // CAMBIO: Verificar si hay contenido en el editor O archivos en localStorage
-      const hasContent = totalFiles > 0 || (editorContent && editorContent.trim() !== '');
-      setHasFiles(hasContent);
-
-      // Establecer enfoque inicial solo una vez
-      if (!initialFocusSet) {
-        setInitialFocusSet(true);
-        if (!hasContent) {
-          // Si no hay archivos, enfocar Welcome
-          setTimeout(() => {
-            if (welcomeRef.current) {
-              welcomeRef.current.focus();
-            }
-          }, 600);
-        } else {
-          // Si hay archivos, enfocar el editor
-          setTimeout(() => {
-            if (textEditorRef.current) {
-              textEditorRef.current.focusEditor();
-            }
-          }, 600);
-        }
-      }
-    };
-
-    checkFiles();
-    
-    const handleStorageChange = () => {
-      checkFiles();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
-    // NUEVO: Intervalo para verificar cambios en localStorage cada 500ms
-    const checkInterval = setInterval(checkFiles, 500);
-    
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(checkInterval);
-    };
-  }, [editorContent, initialFocusSet]);
 
   // Aplicar clase al body según el modo
   useEffect(() => {
@@ -311,12 +373,32 @@ function IDE() {
     };
   }, [isKeyboardMode]);
 
-  // Cargar primer/último archivo al montar
+  // CAMBIO: Verificar archivos SOLO al montar el componente (una sola vez)
   useEffect(() => {
-    const loadInitialFile = () => {
+    const checkInitialFiles = () => {
       const files = JSON.parse(localStorage.getItem('files')) || [];
       const folders = JSON.parse(localStorage.getItem('folders')) || [];
+      const totalFiles = files.length + folders.reduce((acc, f) => acc + (f.files?.length || 0), 0);
       
+      const hasContent = totalFiles > 0;
+      setHasFiles(hasContent);
+
+      // Establecer enfoque inicial solo una vez
+      if (!hasContent) {
+        // Si no hay archivos, mostrar Welcome
+        setShowWelcome(true);
+        setTimeout(() => {
+          if (welcomeRef.current?.focus) {
+            welcomeRef.current.focus();
+          }
+        }, 600);
+      } else {
+        // Si hay archivos, cargar el primero
+        loadInitialFile(files, folders);
+      }
+    };
+
+    const loadInitialFile = (files, folders) => {
       // Intentar cargar el primer archivo sin carpeta
       if (files.length > 0) {
         const firstFile = files[0];
@@ -334,52 +416,64 @@ function IDE() {
       }
     };
 
-    loadInitialFile();
-  }, []);
+    checkInitialFiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Solo ejecutar al montar
 
-  // Verificar si hay archivos y manejar enfoque inicial
+  // CAMBIO: Escuchar cambios en localStorage para actualizar la lista de archivos
+  // pero SIN forzar el enfoque
   useEffect(() => {
-    const checkFiles = () => {
-      const files = JSON.parse(localStorage.getItem('files')) || [];
-      const folders = JSON.parse(localStorage.getItem('folders')) || [];
-      const totalFiles = files.length + folders.reduce((acc, f) => acc + f.files.length, 0);
-      
-      const hasContent = totalFiles > 0 || (editorContent && editorContent.trim() !== '');
-      setHasFiles(hasContent);
-
-      if (!initialFocusSet) {
-        setInitialFocusSet(true);
-        if (!hasContent) {
-          setTimeout(() => {
-            if (welcomeRef.current) {
-              welcomeRef.current.focus();
-            }
-          }, 600);
-        } else {
-          setTimeout(() => {
-            if (textEditorRef.current) {
-              textEditorRef.current.focusEditor();
-            }
-          }, 600);
+    const handleStorageChange = (e) => {
+      if (e.key === 'files' || e.key === 'folders') {
+        const files = JSON.parse(localStorage.getItem('files')) || [];
+        const folders = JSON.parse(localStorage.getItem('folders')) || [];
+        const totalFiles = files.length + folders.reduce((acc, f) => acc + (f.files?.length || 0), 0);
+        
+        // Solo actualizar hasFiles si no estamos en modo Welcome manual
+        if (!showWelcome) {
+          setHasFiles(totalFiles > 0);
         }
       }
     };
 
-    checkFiles();
-    
-    const handleStorageChange = () => {
-      checkFiles();
-    };
-    
     window.addEventListener('storage', handleStorageChange);
-    const checkInterval = setInterval(checkFiles, 500);
     
     return () => {
       window.removeEventListener('storage', handleStorageChange);
-      clearInterval(checkInterval);
     };
-  }, [editorContent, initialFocusSet]);
+  }, [showWelcome]);
 
+  // Determinar qué mostrar: Welcome, Help o Editor
+  const shouldShowHelp = showHelp;
+  const shouldShowManual = showManual && !showHelp;
+  const shouldShowWelcome = (showWelcome || !hasFiles) && !showHelp && !showManual;
+
+  // Función para cerrar la ayuda
+  const handleCloseHelp = () => {
+    setShowHelp(false);
+    // Volver al estado anterior
+    if (!hasFiles) {
+      setShowWelcome(true);
+      setTimeout(() => {
+        if (welcomeRef.current?.focus) {
+          welcomeRef.current.focus();
+        }
+      }, 100);
+    }
+  };
+
+  const handleCloseManual = () => {
+    setShowManual(false);
+    if (!hasFiles) {
+      setShowWelcome(true);
+      setTimeout(() => {
+        if (welcomeRef.current?.focus) {
+          welcomeRef.current.focus();
+        }
+      }, 100);
+    }
+  };
+  
   return (
     <div style={{ 
       display: 'flex', 
@@ -389,13 +483,21 @@ function IDE() {
       overflow: 'hidden'
     }}>
       <Magnifier zoomFactor={magnifierZoom} lensSize={magnifierSize} magnifierEnabled={magnifierEnabled}>
-        <Zoom contrast={contrast} setContrast={setContrast} scale={scale} setScale={setScale} magnifierEnabled={magnifierEnabled} screenReaderEnabled={screenReaderEnabled}
-      setScreenReaderEnabled={setScreenReaderEnabled}>
+        <Zoom 
+          contrast={contrast} 
+          setContrast={setContrast} 
+          scale={scale} 
+          setScale={setScale} 
+          magnifierEnabled={magnifierEnabled} 
+          screenReaderEnabled={screenReaderEnabled}
+          setScreenReaderEnabled={setScreenReaderEnabled}
+        >
           {/* Navbar fijo */}
           <div style={{ flexShrink: 0, zIndex: 1000 }}>
             <Navbar 
               ref={navbarRef} 
               onOpenAppearanceModal={handleOpenAppearanceModal}
+              onFileOpen={handleFileOpen}
               role="banner"
               aria-label="Barra de navegación principal"
             />
@@ -477,14 +579,26 @@ function IDE() {
                   }}
                   split="horizontal"
                 >
-                  {/* Mostrar WelcomeScreen o TextEditor según si hay archivos */}
+                  {/* Mostrar WelcomeScreen o TextEditor */}
                   <div style={{ 
                     display: 'flex', 
                     flexDirection: 'column',
                     minHeight: 0,
                     overflow: 'hidden'
                   }}>
-                    {!hasFiles ? (
+                    {shouldShowHelp ? (
+                      <HelpScreen 
+                        ref={helpRef}
+                        contrast={contrast}
+                        onClose={handleCloseHelp}
+                      />
+                    ) : shouldShowManual ? (
+                      <UserManualScreen 
+                        ref={manualRef}
+                        contrast={contrast}
+                        onClose={handleCloseManual}
+                      />
+                    ) : shouldShowWelcome ? (
                       <WelcomeScreen 
                         ref={welcomeRef}
                         contrast={contrast}
@@ -498,7 +612,7 @@ function IDE() {
                         setOutput={setOutput} 
                         setCodeStructure={setCodeStructure} 
                         editorContent={editorContent} 
-                        setEditorContent={setEditorContent} 
+                        setEditorContent={handleEditorContentChange} 
                         setPid={setPid}
                         currentFileName={currentFileName}
                         unsavedChanges={unsavedChanges}
