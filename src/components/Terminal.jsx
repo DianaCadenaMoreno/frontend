@@ -86,10 +86,10 @@ const Terminal = React.forwardRef(({ debug, contrast, output, pid, textEditorRef
       },
     };
 
-    registerComponent('terminal', terminalAPI);
+    registerComponent('terminal-input', terminalAPI);
 
     return () => {
-      unregisterComponent('terminal');
+      unregisterComponent(' terminal-input');
     };
   }, [registerComponent, unregisterComponent, speak, announce]);
 

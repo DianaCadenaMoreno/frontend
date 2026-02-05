@@ -126,6 +126,9 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
   const [currentColumn, setCurrentColumn] = useState(1);
   const { speak, speakOnFocus, announce } = useScreenReader();
   const { registerComponent, unregisterComponent } = useAppNavigation();
+  const [isExecuting, setIsExecuting] = useState(false);
+  const transcriptionCancelledRef = useRef(false);
+  const transcriptionControllerRef = useRef(null);
 
   useEffect(() => {
     defineCustomThemes();
@@ -234,7 +237,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     }
   }, [currentLine, announce]);
 
-  const handleSendFile = () => {
+  const handleSendFile = useCallback(() => {
     if (!editorContent.trim()) {
       console.error('No hay código para ejecutar.');
       setOutput([{ prompt: '', text: 'Error: No hay código para ejecutar', color: '#ff5555' }]);
@@ -242,6 +245,14 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
       return;
     }
 
+    // Si ya hay una ejecución en curso, no iniciar otra
+    if (isExecuting) {
+      speak('Ya hay una ejecución en curso. Usa F7 para detener o F8 para cancelar.');
+      return;
+    }
+
+    setIsExecuting(true);
+    setIsLoading(true);
     setOutput([{ prompt: '', text: 'Conectando...', color: '#8be9fd' }]);
     speak('Conectando con el servidor');
 
@@ -289,6 +300,8 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
             break;
             
           case 'execution_finished':
+            setIsExecuting(false);
+            setIsLoading(false);
             setOutput(prev => [...prev, { 
               prompt: '', 
               text: `\nProceso finalizado (código: ${data.exit_code})`,
@@ -298,13 +311,24 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
             break;
             
           case 'timeout':
+            setIsExecuting(false);
+            setIsLoading(false);
             setOutput(prev => [...prev, { prompt: '', text: '\nTimeout: El proceso excedió el tiempo límite', color: '#ff5555' }]);
             speak('Tiempo de ejecución excedido');
             break;
             
           case 'error':
+            setIsExecuting(false);
+            setIsLoading(false);
             setOutput(prev => [...prev, { prompt: '', text: `Error: ${data.message}`, color: '#ff5555' }]);
             speak(`Error: ${data.message}`);
+            break;
+
+          case 'killed':
+            setIsExecuting(false);
+            setIsLoading(false);
+            setOutput(prev => [...prev, { prompt: '', text: '\nProceso terminado por el usuario', color: '#ffaa00' }]);
+            speak('Proceso terminado por el usuario');
             break;
             
           default:
@@ -318,17 +342,99 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
 
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
+      setIsExecuting(false);
+      setIsLoading(false);
       setOutput(prev => [...prev, { prompt: '', text: 'Error de conexión WebSocket', color: '#ff5555' }]);
       speak('Error de conexión con el servidor');
     };
 
-    ws.onclose = () => {
-      console.log('WebSocket desconectado');
+    ws.onclose = (event) => {
+      console.log('WebSocket desconectado', event.code, event.reason);
       setWsInstance(null);
+      if (isExecuting) {
+        setIsExecuting(false);
+        setIsLoading(false);
+      }
     };
 
     setWsInstance(ws);
-  };
+  }, [editorContent, speak, setPid, setOutput, isExecuting]);
+
+  const handleStopExecution = useCallback(() => {
+    if (wsInstance && wsInstance.readyState === WebSocket.OPEN) {
+      wsInstance.send(JSON.stringify({
+        action: 'kill',
+        signal: 'SIGTERM'
+      }));
+      speak('Enviando señal de detención al proceso');
+      setOutput(prev => [...prev, { prompt: '', text: 'Deteniendo proceso...', color: '#ffaa00' }]);
+    } else {
+      speak('No hay proceso en ejecución');
+    }
+  }, [wsInstance, speak, setOutput]);
+
+  const handleCancelTranscription = useCallback(() => {
+    if (isRecording) {
+      // Marcar como cancelada ANTES de detener
+      transcriptionCancelledRef.current = true;
+      
+      // Cancelar la petición HTTP si está en curso
+      if (transcriptionControllerRef.current) {
+        transcriptionControllerRef.current.abort();
+        transcriptionControllerRef.current = null;
+      }
+      
+      // Detener el MediaRecorder
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      
+      // Detener todos los tracks del stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      
+      // Limpiar chunks de audio
+      audioChunksRef.current = [];
+      
+      // Resetear estado
+      setIsRecording(false);
+      mediaRecorderRef.current = null;
+      
+      speak('Transcripción cancelada');
+    }
+  }, [isRecording, speak]);
+
+  const handleCancelExecution = useCallback(() => {
+    if (wsInstance) {
+      // Enviar señal SIGKILL
+      if (wsInstance.readyState === WebSocket.OPEN) {
+        try {
+          wsInstance.send(JSON.stringify({
+            action: 'kill',
+            signal: 'SIGKILL'
+          }));
+        } catch (e) {
+          console.error('Error enviando SIGKILL:', e);
+        }
+      }
+      
+      // Cerrar el WebSocket
+      wsInstance.close(1000, 'Cancelado por el usuario');
+      setWsInstance(null);
+      setIsExecuting(false);
+      setIsLoading(false);
+      setPid(null);
+      setOutput(prev => [...prev, { prompt: '', text: '\nEjecución cancelada por el usuario', color: '#ff5555' }]);
+      speak('Ejecución cancelada');
+    } else if (isRecording) {
+      // Cancelar transcripción si está activa
+      handleCancelTranscription();
+    } else {
+      speak('No hay operación en curso para cancelar');
+    }
+  }, [wsInstance, speak, setOutput, setPid, isRecording, handleCancelTranscription]);
 
   const handleBreakpointClick = async (e) => {
     const monaco = await loader.init(); // Inicializa monaco
@@ -357,9 +463,12 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     }
   };
 
-  const handleTranscription = async () => {
+  const handleTranscription = useCallback(async () => {
     if (!isRecording) {
       try {
+        // Resetear flag de cancelación al iniciar nueva grabación
+        transcriptionCancelledRef.current = false;
+        
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         streamRef.current = stream;
         const mediaRecorder = new MediaRecorder(stream);
@@ -373,45 +482,88 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
         };
   
         mediaRecorder.onstop = async () => {
-          stream.getTracks().forEach(track => track.stop());
+          // Detener tracks del stream
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+          }
+          
           setIsRecording(false);
+          
+          // Si fue cancelada, no procesar nada
+          if (transcriptionCancelledRef.current) {
+            console.log('Transcripción cancelada, no se procesará el audio');
+            audioChunksRef.current = [];
+            transcriptionCancelledRef.current = false;
+            return;
+          }
+          
+          // Si no hay chunks de audio, no procesar
+          if (audioChunksRef.current.length === 0) {
+            speak('No se grabó audio');
+            return;
+          }
+          
           speak('Procesando transcripción');
-  
-          if (audioChunksRef.current.length === 0) return;
   
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
           const formData = new FormData();
           formData.append('audio', audioBlob, 'audio.wav');
   
+          // Crear AbortController para poder cancelar la petición
+          transcriptionControllerRef.current = new AbortController();
+  
           try {
             const response = await axiosInstance.post('transcribe/', formData, {
               headers: { 'Content-Type': 'multipart/form-data' },
+              signal: transcriptionControllerRef.current.signal
             });
+  
+            // Verificar nuevamente si fue cancelada durante la petición
+            if (transcriptionCancelledRef.current) {
+              console.log('Transcripción cancelada durante procesamiento');
+              return;
+            }
   
             const code = response.data.code;
             if (code) {
               setEditorContent(prev => prev + '\n' + code);
               handleAnalyzeStructure(code);
               speak('Código transcrito e insertado en el editor');
+            } else {
+              speak('No se pudo transcribir código del audio');
             }
           } catch (err) {
+            // Si fue cancelada por AbortController
+            if (err.name === 'AbortError' || err.name === 'CanceledError') {
+              console.log('Petición de transcripción cancelada');
+              return;
+            }
             console.error('Error al enviar audio:', err);
             speak('Error al transcribir el audio');
+          } finally {
+            transcriptionControllerRef.current = null;
+            audioChunksRef.current = [];
           }
         };
   
         mediaRecorder.start();
         setIsRecording(true);
-        speak('Grabación iniciada');
+        speak('Grabación iniciada. Presiona F6 de nuevo para detener o F8 para cancelar.');
       } catch (error) {
         console.error('Error accediendo al micrófono:', error);
         speak('Error al acceder al micrófono');
+        transcriptionCancelledRef.current = false;
       }
     } else {
-      mediaRecorderRef.current?.stop();
-      speak('Grabación detenida');
+      // Detener grabación y procesar (no cancelar)
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+        speak('Grabación detenida, procesando...');
+      }
     }
-  };
+  }, [isRecording, speak, setEditorContent]);
+
 
   const readCurrentLine = useCallback(() => {
     if (!editorRef.current) return;
@@ -708,6 +860,104 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onSave]);
+
+  // Escuchar eventos globales de ejecución
+  useEffect(() => {
+    const handleExecuteEvent = () => {
+      handleSendFile();
+    };
+
+    const handleTranscribeEvent = () => {
+      handleTranscription();
+    };
+
+    const handleStopEvent = () => {
+      handleStopExecution();
+    };
+
+    const handleCancelEvent = () => {
+      handleCancelExecution();
+    };
+
+    window.addEventListener('codeflow-execute', handleExecuteEvent);
+    window.addEventListener('codeflow-transcribe', handleTranscribeEvent);
+    window.addEventListener('codeflow-stop', handleStopEvent);
+    window.addEventListener('codeflow-cancel', handleCancelEvent);
+
+    return () => {
+      window.removeEventListener('codeflow-execute', handleExecuteEvent);
+      window.removeEventListener('codeflow-transcribe', handleTranscribeEvent);
+      window.removeEventListener('codeflow-stop', handleStopEvent);
+      window.removeEventListener('codeflow-cancel', handleCancelEvent);
+    };
+  }, [handleSendFile, handleTranscription, handleStopExecution, handleCancelExecution]);
+
+  // Limpiar recursos al desmontar
+  useEffect(() => {
+    return () => {
+      // Cancelar cualquier transcripción en curso
+      if (transcriptionControllerRef.current) {
+        transcriptionControllerRef.current.abort();
+      }
+      // Detener stream de audio
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+      // Cerrar WebSocket
+      if (wsInstance) {
+        wsInstance.close();
+      }
+    };
+  }, [wsInstance]);
+
+  // Registrar componente en el sistema de navegación
+  useEffect(() => {
+    const editorApi = {
+      focus: () => {
+        if (editorRef.current) {
+          editorRef.current.focus();
+          speak('Editor de código enfocado');
+          readCurrentLine();
+        }
+      },
+      blur: () => {
+        if (editorRef.current) {
+          announce('Saliendo del editor');
+        }
+      },
+      readLine: readSelectionOrLine,
+      readWord: readWordAtCursor,
+      readAll: readAllContent,
+      goToLine: goToLine,
+      readCursor: readCursorInfo,
+      execute: handleSendFile,
+      save: onSave,
+      transcribe: handleTranscription,
+      stop: handleStopExecution,
+      cancel: handleCancelExecution
+    };
+
+    registerComponent('editor', editorApi);
+
+    return () => {
+      unregisterComponent('editor');
+    };
+  }, [
+    registerComponent, 
+    unregisterComponent, 
+    speak, 
+    announce,
+    readSelectionOrLine,
+    readWordAtCursor,
+    readAllContent,
+    goToLine,
+    readCursorInfo,
+    handleSendFile,
+    onSave,
+    handleTranscription,
+    handleStopExecution,
+    handleCancelExecution
+  ]);
   
   return (
     <Box ref={ref} style={{ height: '55%', display: 'flex', flexDirection: 'column', minHeight: 0}}>
@@ -734,50 +984,49 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
           </Breadcrumbs>
         </Stack>
       </Box>
-        <Box 
-          display="flex" 
-          flexWrap="wrap" 
-          gap={1} 
-          justifyContent="center" 
-          alignItems="center"
+      <Box 
+        display="flex" 
+        flexWrap="wrap" 
+        gap={1} 
+        justifyContent="center" 
+        alignItems="center"
+      >
+        <Button 
+          variant="contained" 
+          size="small" 
+          color={isExecuting ? "warning" : "success"}
+          onClick={isExecuting ? handleStopExecution : handleSendFile} 
+          aria-label={isExecuting ? "Detener ejecución (F7)" : "Ejecutar archivo (F5)"}
+          title={isExecuting ? "Detener (F7)" : "Ejecutar (F5)"}
+          style={{ flex: '1 1 auto', minWidth: '120px' }}
         >
+          {isLoading ? <CircularProgress size={24} color="inherit" /> : (isExecuting ? 'Detener' : 'Ejecutar')}
+        </Button>
+        <Button
+          variant="contained"
+          size="small"
+          color={isRecording ? "error" : "info"}
+          onClick={handleTranscription}
+          aria-label={isRecording ? "Detener grabación (F6)" : "Iniciar transcripción (F6)"}
+          title={isRecording ? "Detener (F6)" : "Transcribir (F6)"}
+          style={{ flex: '1 1 auto', minWidth: '120px' }}
+        >
+          {isRecording ? 'Detener' : 'Transcribir'}
+        </Button>
+        {(isRecording || isExecuting) && (
           <Button 
-            variant="contained" 
             size="small" 
-            color="success" 
-            onClick={handleSendFile} 
-            aria-label="Ejecutar archivo (Enter)"
-            title="Ejecutar (Enter)"
-            style={{ flex: '1 1 auto', minWidth: '120px' }}
+            color="error"
+            variant="outlined"
+            onClick={handleCancelExecution}
+            aria-label="Cancelar operación (F8)"
+            title="Cancelar (F8)"
+            style={{ flex: '1 1 auto', minWidth: '100px' }}
           >
-            {isLoading ? <CircularProgress size={24} color="inherit" /> : 'Ejecutar'}
+            Cancelar
           </Button>
-          <Button
-            variant="contained"
-            size="small"
-            color={isRecording ? "error" : "info"}
-            onClick={handleTranscription}
-            aria-label={isRecording ? "Detener grabación (Enter)" : "Iniciar grabación (Enter)"}
-            style={{ flex: '1 1 auto', minWidth: '120px' }}
-          >
-            {isRecording ? 'Detener' : 'Transcribir'}
-          </Button>
-          {isRecording && (
-            <Button 
-              size="small" 
-              color="warning" 
-              onClick={() => {
-                mediaRecorderRef.current?.stop();
-                streamRef.current?.getTracks().forEach(track => track.stop());
-                audioChunksRef.current = [];
-                setIsRecording(false);
-              }}
-              style={{ flex: '1 1 auto', minWidth: '120px' }}
-            >
-              Cancelar
-            </Button>
-          )}
-        </Box>
+        )}
+      </Box>
       </Box>
       <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <Box style={{ position: 'relative', flex: 1, height: '100%', minHeight: 0 }}>

@@ -27,195 +27,101 @@ export const ScreenReaderProvider = ({ children }) => {
   const speak = useCallback((text, options = {}) => {
     if (!enabled || !text) return;
 
-    // Detener cualquier anuncio anterior
-    if (window.speechSynthesis.speaking || speakingChunksRef.current) {
+    if (options.interrupt !== false && window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
-      speakingChunksRef.current = false;
     }
 
-    const ensureSpeechSynthesisReady = (callback) => {
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        callback();
-        return;
-      }
+    let cleanText = text.trim()
+      .replace(/```[\s\S]*?```/g, ' bloque de código ')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/\n+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleanText) return;
+
+    // SOLUCIÓN 1: Reducir el límite para evitar timeouts del navegador
+    const MAX_UTTERANCE_LENGTH = 1000; // Reducido drásticamente
+    
+    if (cleanText.length <= MAX_UTTERANCE_LENGTH) {
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = options.lang || 'es-ES';
+      utterance.rate = options.rate || 1.1;
+      utterance.pitch = options.pitch || 1;
+      utterance.volume = options.volume || 1;
       
-      let voicesLoaded = false;
-      const voicesChangedHandler = () => {
-        if (!voicesLoaded && window.speechSynthesis.getVoices().length > 0) {
-          voicesLoaded = true;
-          window.speechSynthesis.removeEventListener('voiceschanged', voicesChangedHandler);
-          callback();
-        }
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = (e) => {
+        console.warn('Error en síntesis:', e.error);
+        setIsSpeaking(false);
       };
-      
-      window.speechSynthesis.addEventListener('voiceschanged', voicesChangedHandler);
-      
-      // Timeout de seguridad aumentado para Chrome
-      setTimeout(() => {
-        window.speechSynthesis.removeEventListener('voiceschanged', voicesChangedHandler);
-        if (!voicesLoaded) {
-          console.warn('⚠️ Timeout esperando voces, intentando continuar...');
-          callback();
-        }
-      }, 2000); // Aumentado de 1000 a 2000ms
-    };
 
-    ensureSpeechSynthesisReady(() => {
-      // Limpiar el texto para lectura natural
-      let cleanText = text.trim();
-      
-      cleanText = cleanText.replace(/```[\s\S]*?```/g, ' bloque de código ');
-      cleanText = cleanText.replace(/`([^`]+)`/g, ' código $1 ');
-      cleanText = cleanText.replace(/\*\*([^*]+)\*\*/g, '$1');
-      cleanText = cleanText.replace(/\*([^*]+)\*/g, '$1');
-      cleanText = cleanText.replace(/#{1,6}\s/g, '');
-      cleanText = cleanText.replace(/\n{2,}/g, '. ');
-      cleanText = cleanText.replace(/\n/g, ' ');
-      cleanText = cleanText.replace(/[_~]/g, '');
-      cleanText = cleanText.replace(/\s+/g, ' ').trim();
-      
-      const maxLength = 200;
-      const chunks = [];
-      
-      if (cleanText.length > maxLength) {
-        const sentenceRegex = /[^.!?]+[.!?]+(?:\s|$)/g;
-        const sentences = cleanText.match(sentenceRegex) || [];
+      window.speechSynthesis.speak(utterance);
+    } else {
+      // SOLUCIÓN 2: Dividir por oraciones más pequeñas
+      const sentences = cleanText.split(/[.!?]+\s+/).filter(s => s.trim());
+      let currentIndex = 0;
+
+      const speakNext = () => {
+        if (currentIndex >= sentences.length) {
+          setIsSpeaking(false);
+          return;
+        }
+
+        // SOLUCIÓN 3: Verificar si la síntesis sigue activa antes de continuar
+        if (!enabled) {
+          setIsSpeaking(false);
+          return;
+        }
+
+        const sentence = sentences[currentIndex].trim() + '.';
         
-        if (sentences.length === 0) {
-          let remaining = cleanText;
-          while (remaining.length > 0) {
-            if (remaining.length <= maxLength) {
-              chunks.push(remaining.trim());
-              break;
-            }
-            
-            let splitPoint = remaining.lastIndexOf(' ', maxLength);
-            if (splitPoint === -1) splitPoint = maxLength;
-            
-            chunks.push(remaining.substring(0, splitPoint).trim());
-            remaining = remaining.substring(splitPoint).trim();
-          }
-        } else {
-          let currentChunk = '';
-          
-          sentences.forEach(sentence => {
-            const trimmedSentence = sentence.trim();
-            if ((currentChunk + ' ' + trimmedSentence).length > maxLength && currentChunk.length > 0) {
-              chunks.push(currentChunk.trim());
-              currentChunk = trimmedSentence;
-            } else {
-              currentChunk += (currentChunk ? ' ' : '') + trimmedSentence;
-            }
-          });
-          
-          if (currentChunk.trim()) {
-            chunks.push(currentChunk.trim());
-          }
-        }
-      } else {
-        chunks.push(cleanText);
-      }
-
-      if (chunks.length === 0 || chunks.every(c => !c.trim())) {
-        console.warn('No hay contenido válido para leer');
-        return;
-      }
-
-      speakingChunksRef.current = true;
-
-      const speakNextChunk = (index = 0) => {
-        if (index >= chunks.length || !speakingChunksRef.current) {
-          setIsSpeaking(false);
-          speakingChunksRef.current = false;
-          currentUtteranceRef.current = null;
+        // SOLUCIÓN 4: Límite más conservador por oración
+        if (sentence.length > 200) {
+          // Si una oración es muy larga, dividirla por comas
+          const parts = sentence.split(',').filter(p => p.trim());
+          // Procesar cada parte como una oración separada
+          sentences.splice(currentIndex, 1, ...parts.map(p => p.trim()));
+          speakNext(); // Reintentar con la oración dividida
           return;
         }
 
-        if (!window.speechSynthesis) {
-          console.error('Speech synthesis no disponible');
-          setIsSpeaking(false);
-          speakingChunksRef.current = false;
-          return;
-        }
-
-        const chunkText = chunks[index].trim();
-        if (!chunkText) {
-          setTimeout(() => speakNextChunk(index + 1), 100);
-          return;
-        }
-
-        const utterance = new SpeechSynthesisUtterance(chunkText);
+        const utterance = new SpeechSynthesisUtterance(sentence);
         utterance.lang = options.lang || 'es-ES';
-        utterance.rate = options.rate || 1.2;
+        utterance.rate = options.rate || 1.1;
         utterance.pitch = options.pitch || 1;
         utterance.volume = options.volume || 1;
 
-        if (index === 0) {
-          utterance.onstart = () => {
-            setIsSpeaking(true);
-          };
+        if (currentIndex === 0) {
+          utterance.onstart = () => setIsSpeaking(true);
         }
 
         utterance.onend = () => {
-          const pauseDuration = Math.min(300, chunkText.length * 1.5);
-          setTimeout(() => {
-            if (speakingChunksRef.current) {
-              speakNextChunk(index + 1);
-            }
-          }, pauseDuration);
+          currentIndex++;
+          // SOLUCIÓN 5: Pausa más larga entre oraciones para evitar acumulación
+          setTimeout(speakNext, 300);
         };
 
         utterance.onerror = (e) => {
-          console.error('Error en síntesis de voz:', e);
-          
-          // NUEVO: Manejo específico para 'not-allowed' en Chrome
-          if (e.error === 'not-allowed') {
-            console.error('❌ Chrome bloqueó speechSynthesis - auto-focus no es interacción válida');
-            console.log('💡 Solución: El usuario debe hacer clic o presionar una tecla primero');
-            speakingChunksRef.current = false;
-            setIsSpeaking(false);
-            return;
-          }
-          
-          if (e.error === 'interrupted' || e.error === 'canceled') {
-            speakingChunksRef.current = false;
-            setIsSpeaking(false);
-            return;
-          }
-          
-          if (e.error === 'network' || e.error === 'synthesis-failed') {
-            console.warn(`Reintentando chunk ${index} después de error: ${e.error}`);
-            setTimeout(() => {
-              if (speakingChunksRef.current) {
-                speakNextChunk(index);
-              }
-            }, 500);
-          } else {
-            console.error(`Error no recuperable en chunk ${index}:`, e);
-            setIsSpeaking(false);
-            speakingChunksRef.current = false;
-            currentUtteranceRef.current = null;
-          }
+          console.warn('Error en oración:', e.error, 'Oración:', sentence);
+          currentIndex++;
+          setTimeout(speakNext, 500);
         };
 
-        currentUtteranceRef.current = utterance;
-        
+        // SOLUCIÓN 6: Verificar que speechSynthesis esté listo
         if (window.speechSynthesis.paused) {
           window.speechSynthesis.resume();
         }
-        
-        try {
-          window.speechSynthesis.speak(utterance);
-        } catch (error) {
-          console.error('Error al ejecutar speech synthesis:', error);
-          setIsSpeaking(false);
-          speakingChunksRef.current = false;
-        }
+
+        window.speechSynthesis.speak(utterance);
       };
 
-      speakNextChunk(0);
-    });
+      speakNext();
+    }
   }, [enabled]);
 
   // Función para leer al pasar el mouse (con delay)

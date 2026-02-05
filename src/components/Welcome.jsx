@@ -191,11 +191,11 @@ const WelcomeScreen = React.forwardRef(({ contrast }, ref) => {
         'Alt más 2: Ir al gestor de archivos',
         'Alt más 3: Ir al editor de código',
         'Alt más 4: Ir a la terminal',
-        'Alt más H: Mostrar ayuda',
+        'Alt más A: Mostrar ayuda',
         'Alt más B: Volver a esta guía',
-        'F2: Activar o desactivar lector de pantalla',
-        'F3: Cambiar tema de contraste',
-        'Control más Enter: Ejecutar código'
+        'Alt más L: Activar o desactivar lector de pantalla',
+        'Alt más C: Cambiar tema de contraste',
+        'F5: Ejecutar código'
       ],
       voice: [
         'Di archivos para abrir gestor de archivos',
@@ -222,10 +222,10 @@ const WelcomeScreen = React.forwardRef(({ contrast }, ref) => {
       ],
       editor: [
         'Resaltado de sintaxis automático',
-        'Autocompletado de código inteligente',
         'Transcripción de voz a código',
-        'Control más Enter: Ejecutar código',
-        'Control más S: Guardar archivo',
+        'F5: Ejecutar código',
+        'Control más S: Guardar archivo dentro de mi equipo',
+        'Alt más S: Guardar archivo dentro de codeflow',
         'Control más Z: Deshacer',
         'Control más Y: Rehacer',
         'El editor lee el código mientras escribes'
@@ -380,7 +380,7 @@ const WelcomeScreen = React.forwardRef(({ contrast }, ref) => {
 
     registerComponent('welcome', welcomeAPI);
 
-    // CAMBIO CRÍTICO: No hablar en auto-focus inicial
+    // CRÍTICO: No hablar en auto-focus inicial
     const checkAndFocus = () => {
         const files = JSON.parse(localStorage.getItem('files')) || [];
         const folders = JSON.parse(localStorage.getItem('folders')) || [];
