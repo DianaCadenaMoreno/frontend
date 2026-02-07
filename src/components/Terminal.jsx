@@ -58,11 +58,65 @@ const Terminal = React.forwardRef(({ debug, contrast, output, pid, textEditorRef
 
   const themeColors = getThemeColors(contrast);
 
+  const lastHistoryLengthRef = useRef(0);
+  const lastOutputLengthRef = useRef(0);
+
   useEffect(() => {
     if (terminalRef.current) {
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
   }, [output, history]);
+
+  // Anunciar nuevas líneas en el historial de la terminal
+  useEffect(() => {
+    if (history.length > lastHistoryLengthRef.current) {
+      const newLines = history.slice(lastHistoryLengthRef.current);
+      newLines.forEach((line) => {
+        const basePrompt = line.prompt ? line.prompt + ' ' : '';
+        const rawText = String(line.text || '');
+        const pieces = rawText.split('\n');
+
+        pieces.forEach((piece) => {
+          const textToSpeak = `${basePrompt}${piece}`.trim();
+          if (textToSpeak) {
+            // No interrumpir lo que ya se está leyendo; encolar líneas
+            speak(textToSpeak, { interrupt: false });
+          }
+        });
+      });
+      lastHistoryLengthRef.current = history.length;
+    } else {
+      lastHistoryLengthRef.current = history.length;
+    }
+  }, [history, speak]);
+
+  // Anunciar nuevas líneas de salida del programa
+  useEffect(() => {
+    if (!Array.isArray(output)) {
+      lastOutputLengthRef.current = 0;
+      return;
+    }
+
+    if (output.length > lastOutputLengthRef.current) {
+      const newLines = output.slice(lastOutputLengthRef.current);
+      newLines.forEach((line) => {
+        const basePrompt = line.prompt ? line.prompt + ' ' : '';
+        const rawText = String(line.text || '');
+        const pieces = rawText.split('\n');
+
+        pieces.forEach((piece) => {
+          const textToSpeak = `${basePrompt}${piece}`.trim();
+          if (textToSpeak) {
+            // No interrumpir lo que ya se está leyendo; encolar líneas
+            speak(textToSpeak, { interrupt: false });
+          }
+        });
+      });
+      lastOutputLengthRef.current = output.length;
+    } else {
+      lastOutputLengthRef.current = output.length;
+    }
+  }, [output, speak]);
 
   useEffect(() => {
     if (inputRef.current) {
@@ -94,6 +148,37 @@ const Terminal = React.forwardRef(({ debug, contrast, output, pid, textEditorRef
   }, [registerComponent, unregisterComponent, speak, announce]);
 
   const handleKeyDown = async (event) => {
+    // Ctrl+C - Interrumpir proceso
+    if (event.ctrlKey && (event.key === 'c' || event.key === 'C')) {
+      event.preventDefault();
+      const ws = textEditorRef?.current?.getWebSocket();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          action: 'interrupt',
+          pid: pid
+        }));
+        announce('Señal de interrupción enviada');
+      } else {
+        announce('No hay proceso en ejecución');
+      }
+      return;
+    }
+
+    // Leer teclas pulsadas para accesibilidad
+    if (!event.ctrlKey && !event.altKey && !event.metaKey) {
+      if (event.key === 'Backspace') {
+        speak('borrar');
+      } else if (event.key === 'Enter') {
+        speak('enter');
+      } else if (event.key.length === 1) {
+        let charSpoken = event.key;
+        if (charSpoken === ' ') {
+          charSpoken = 'espacio';
+        }
+        speak(charSpoken);
+      }
+    }
+
     if (event.key === 'Enter') {
       event.preventDefault();
       const command = input.trim();
@@ -101,22 +186,6 @@ const Terminal = React.forwardRef(({ debug, contrast, output, pid, textEditorRef
       
       if (command === 'clear') {
         setHistory([]);
-        return;
-      }
-
-      // Ctrl+C - Interrumpir proceso
-      if (event.ctrlKey && event.key === 'c') {
-        event.preventDefault();
-        const ws = textEditorRef?.current?.getWebSocket();
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            action: 'interrupt',
-            pid: pid
-          }));
-          announce('Señal de interrupción enviada');
-        } else {
-          announce('No hay proceso en ejecución');
-        }
         return;
       }
 

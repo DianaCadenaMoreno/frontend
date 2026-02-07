@@ -22,7 +22,7 @@ import { useAppNavigation } from '../contexts/NavigationContext';
 import { useScreenReader } from '../contexts/ScreenReaderContext';
 
 const menuItems = {
-  archivos: ['Nuevo archivo de texto', 'Nuevo archivo', 'Abrir un archivo', 'Abrir una carpeta'],
+  archivos: ['Nuevo archivo', 'Nueva carpeta', 'Abrir archivo', 'Abrir carpeta'],
   ajustes: ['Apariencia'],
   ayuda: ['Bienvenida', 'Ver todos los comandos', 'Documentación', 'Manual de usuario'],
 };
@@ -49,7 +49,7 @@ const Navbar = React.forwardRef(({ onOpenAppearanceModal, onFileOpen }, ref) => 
   const [storageWarningMessage, setStorageWarningMessage] = useState('');
   const [extensionErrorOpen, setExtensionErrorOpen] = useState(false);
   
-  const { registerComponent, unregisterComponent, setFocusedComponent } = useAppNavigation();
+  const { registerComponent, unregisterComponent, setFocusedComponent, focusComponent } = useAppNavigation();
   const { speak, speakOnHover, speakOnFocus, cancelHoverSpeak, announce, stop } = useScreenReader();
   
   const navbarRef = useRef(null);
@@ -483,17 +483,17 @@ const Navbar = React.forwardRef(({ onOpenAppearanceModal, onFileOpen }, ref) => 
   // Ejecutar acción del menú
   const executeMenuAction = (item) => {
     switch (item) {
-      case 'Nuevo archivo de texto':
-        handleCreateTextFile();
-        break;
       case 'Nuevo archivo':
-        handleCreatePythonFile();
+        focusComponent('filemanager-create-file');
         break;
-      case 'Abrir un archivo':
-        handleOpenFile();
+      case 'Nueva carpeta':
+        focusComponent('filemanager-create-folder');
         break;
-      case 'Abrir una carpeta':
-        handleOpenFolder();
+      case 'Abrir archivo':
+        focusComponent('filemanager-open-file');
+        break;
+      case 'Abrir carpeta':
+        focusComponent('filemanager-open-folder');
         break;
       case 'Apariencia':
         onOpenAppearanceModal();
@@ -641,8 +641,8 @@ const Navbar = React.forwardRef(({ onOpenAppearanceModal, onFileOpen }, ref) => 
           setFocusedComponent('navbar');
           speakOnFocus('Barra de navegación. Usa las flechas izquierda y derecha para navegar entre menús. Enter para abrir un menú.');
         }}
-        role="navigation"
         aria-label="Barra de navegación principal"
+        component={'div'}
       >
         <Toolbar 
           disableGutters 

@@ -122,6 +122,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
   const [wsInstance, setWsInstance] = useState(null);
+  const wsRef = useRef(null); // Referencia adicional para evitar closures obsoletos
   const [currentLine, setCurrentLine] = useState(1);
   const [currentColumn, setCurrentColumn] = useState(1);
   const { speak, speakOnFocus, announce } = useScreenReader();
@@ -229,13 +230,16 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     
     setCurrentLine(position.lineNumber);
     setCurrentColumn(position.column);
-    
-    // Solo anunciar cambios de línea (no cada movimiento de columna)
-    if (Math.abs(position.lineNumber - currentLine) >= 1) {
+
+    // Cuando se cambia de línea, leer la línea completa
+    if (position.lineNumber !== currentLine) {
       const lineContent = model.getLineContent(position.lineNumber);
-      announce(`Línea ${position.lineNumber}`);
+      const textToRead = lineContent.trim()
+        ? `Línea ${position.lineNumber}: ${lineContent}`
+        : `Línea ${position.lineNumber} vacía`;
+      speak(textToRead);
     }
-  }, [currentLine, announce]);
+  }, [currentLine, speak]);
 
   const handleSendFile = useCallback(() => {
     if (!editorContent.trim()) {
@@ -249,6 +253,20 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     if (isExecuting) {
       speak('Ya hay una ejecución en curso. Usa F7 para detener o F8 para cancelar.');
       return;
+    }
+
+    // Cerrar cualquier WebSocket existente antes de crear uno nuevo
+    if (wsRef.current) {
+      console.log('Cerrando WebSocket anterior...');
+      try {
+        if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
+          wsRef.current.close(1000, 'Nueva ejecución iniciada');
+        }
+      } catch (e) {
+        console.error('Error cerrando WebSocket anterior:', e);
+      }
+      wsRef.current = null;
+      setWsInstance(null);
     }
 
     setIsExecuting(true);
@@ -288,7 +306,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
           case 'started':
             setPid(data.pid);
             setOutput(prev => [...prev, { prompt: '', text: `Proceso iniciado (PID: ${data.pid})`, color: '#50fa7b' }]);
-            speak(`Proceso iniciado con PID ${data.pid}`);
+            speak(`Proceso iniciado con PID ${data.pid}`, { interrupt: false });
             break;
             
           case 'output':
@@ -307,28 +325,57 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
               text: `\nProceso finalizado (código: ${data.exit_code})`,
               color: data.exit_code === 0 ? '#50fa7b' : '#ff5555'
             }]);
-            speak(data.exit_code === 0 ? 'Ejecución completada exitosamente' : `Ejecución finalizada con errores, código ${data.exit_code}`);
+            speak(
+              data.exit_code === 0 
+                ? 'Ejecución completada exitosamente' 
+                : `Ejecución finalizada con errores, código ${data.exit_code}`,
+              { interrupt: false }
+            );
+            // Cerrar WebSocket después de finalizar
+            setTimeout(() => {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close(1000, 'Ejecución finalizada');
+              }
+            }, 100);
             break;
             
           case 'timeout':
             setIsExecuting(false);
             setIsLoading(false);
             setOutput(prev => [...prev, { prompt: '', text: '\nTimeout: El proceso excedió el tiempo límite', color: '#ff5555' }]);
-            speak('Tiempo de ejecución excedido');
+            speak('Tiempo de ejecución excedido', { interrupt: false });
+            // Cerrar WebSocket después de timeout
+            setTimeout(() => {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close(1000, 'Timeout');
+              }
+            }, 100);
             break;
             
           case 'error':
             setIsExecuting(false);
             setIsLoading(false);
             setOutput(prev => [...prev, { prompt: '', text: `Error: ${data.message}`, color: '#ff5555' }]);
-            speak(`Error: ${data.message}`);
+            speak(`Error: ${data.message}`, { interrupt: false });
+            // Cerrar WebSocket después de error
+            setTimeout(() => {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close(1000, 'Error');
+              }
+            }, 100);
             break;
 
           case 'killed':
             setIsExecuting(false);
             setIsLoading(false);
             setOutput(prev => [...prev, { prompt: '', text: '\nProceso terminado por el usuario', color: '#ffaa00' }]);
-            speak('Proceso terminado por el usuario');
+            speak('Proceso terminado por el usuario', { interrupt: false });
+            // Cerrar WebSocket después de kill
+            setTimeout(() => {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close(1000, 'Killed');
+              }
+            }, 100);
             break;
             
           default:
@@ -350,6 +397,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
 
     ws.onclose = (event) => {
       console.log('WebSocket desconectado', event.code, event.reason);
+      wsRef.current = null;
       setWsInstance(null);
       if (isExecuting) {
         setIsExecuting(false);
@@ -357,12 +405,13 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
       }
     };
 
+    wsRef.current = ws;
     setWsInstance(ws);
   }, [editorContent, speak, setPid, setOutput, isExecuting]);
 
   const handleStopExecution = useCallback(() => {
-    if (wsInstance && wsInstance.readyState === WebSocket.OPEN) {
-      wsInstance.send(JSON.stringify({
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
         action: 'kill',
         signal: 'SIGTERM'
       }));
@@ -371,7 +420,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     } else {
       speak('No hay proceso en ejecución');
     }
-  }, [wsInstance, speak, setOutput]);
+  }, [speak, setOutput]);
 
   const handleCancelTranscription = useCallback(() => {
     if (isRecording) {
@@ -407,11 +456,11 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
   }, [isRecording, speak]);
 
   const handleCancelExecution = useCallback(() => {
-    if (wsInstance) {
+    if (wsRef.current) {
       // Enviar señal SIGKILL
-      if (wsInstance.readyState === WebSocket.OPEN) {
+      if (wsRef.current.readyState === WebSocket.OPEN) {
         try {
-          wsInstance.send(JSON.stringify({
+          wsRef.current.send(JSON.stringify({
             action: 'kill',
             signal: 'SIGKILL'
           }));
@@ -421,7 +470,8 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
       }
       
       // Cerrar el WebSocket
-      wsInstance.close(1000, 'Cancelado por el usuario');
+      wsRef.current.close(1000, 'Cancelado por el usuario');
+      wsRef.current = null;
       setWsInstance(null);
       setIsExecuting(false);
       setIsLoading(false);
@@ -434,21 +484,30 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     } else {
       speak('No hay operación en curso para cancelar');
     }
-  }, [wsInstance, speak, setOutput, setPid, isRecording, handleCancelTranscription]);
+  }, [speak, setOutput, setPid, isRecording, handleCancelTranscription]);
 
   const handleBreakpointClick = async (e) => {
-    const monaco = await loader.init(); // Inicializa monaco
-    const lineNumber = e.target.position.lineNumber;
+    // Proteger contra eventos sin posición o sin modelo (p.ej. al cambiar de archivo)
+    if (!editorRef.current) return;
+
+    const target = e.target;
+    if (!target || !target.position) return;
+
     const model = editorRef.current.getModel();
-    const decorations = model.getLineDecorations(lineNumber);
+    if (!model) return;
+
+    const monaco = await loader.init(); // Inicializa monaco
+    const lineNumber = target.position.lineNumber;
+    const decorations = model.getLineDecorations(lineNumber) || [];
 
     if (decorations.length > 0) {
-      // Remove breakpoint
-      const newBreakpoints = breakpoints.filter(bp => bp.lineNumber !== lineNumber);
-      setBreakpoints(newBreakpoints);
-      model.deltaDecorations(decorations.map(d => d.id), []);
+      // Quitar breakpoint existente en la línea
+      model.deltaDecorations(
+        decorations.map((d) => d.id),
+        []
+      );
     } else {
-      // Add breakpoint
+      // Agregar nuevo breakpoint
       const newBreakpoint = {
         range: new monaco.Range(lineNumber, 1, lineNumber, 1),
         options: {
@@ -457,8 +516,6 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
           glyphMarginClassName: 'myBreakpointGlyph',
         },
       };
-      const newBreakpoints = [...breakpoints, newBreakpoint];
-      setBreakpoints(newBreakpoints);
       model.deltaDecorations([], [newBreakpoint]);
     }
   };
@@ -788,17 +845,17 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
       return;
     }
 
-    // Anunciar navegación con flechas - SIMPLIFICADO
-    if (['ArrowUp', 'ArrowDown'].includes(event.key)) {
-      setTimeout(() => {
-        const model = editorRef.current?.getModel();
-        const position = editorRef.current?.getPosition();
-        if (model && position) {
-          const lineContent = model.getLineContent(position.lineNumber);
-          // Solo anunciar el número de línea brevemente
-          announce(`Línea ${position.lineNumber}`);
-        }
-      }, 50);
+    // Lectura de teclas mientras se escribe (sin modificadores)
+    if (!event.ctrlKey && !event.altKey && !event.metaKey) {
+      if (event.key === 'Backspace') {
+        speak('borrar');
+      } else if (event.key === 'Enter') {
+        speak('enter, nueva línea');
+      } else if (event.key === ' ' || event.key === 'Space') {
+        speak('espacio');
+      } else if (event.key && event.key.length === 1) {
+        speak(event.key);
+      }
     }
   }, [
     readSelectionOrLine,
@@ -809,8 +866,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
     handleSendFile,
     onSave,
     handleTranscription,
-    speak,
-    announce
+    speak
   ]);
 
   // Función imperativa para acceder desde fuera
@@ -904,11 +960,11 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
         streamRef.current.getTracks().forEach(track => track.stop());
       }
       // Cerrar WebSocket
-      if (wsInstance) {
-        wsInstance.close();
+      if (wsRef.current) {
+        wsRef.current.close();
       }
     };
-  }, [wsInstance]);
+  }, []);
 
   // Registrar componente en el sistema de navegación
   useEffect(() => {
@@ -999,6 +1055,10 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
           aria-label={isExecuting ? "Detener ejecución (F7)" : "Ejecutar archivo (F5)"}
           title={isExecuting ? "Detener (F7)" : "Ejecutar (F5)"}
           style={{ flex: '1 1 auto', minWidth: '120px' }}
+          onFocus={() => speakOnFocus(isExecuting 
+            ? 'Botón detener ejecución del código actual, también puedes usar F7.' 
+            : 'Botón ejecutar archivo actual, también puedes usar F5.'
+          )}
         >
           {isLoading ? <CircularProgress size={24} color="inherit" /> : (isExecuting ? 'Detener' : 'Ejecutar')}
         </Button>
@@ -1010,6 +1070,10 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
           aria-label={isRecording ? "Detener grabación (F6)" : "Iniciar transcripción (F6)"}
           title={isRecording ? "Detener (F6)" : "Transcribir (F6)"}
           style={{ flex: '1 1 auto', minWidth: '120px' }}
+          onFocus={() => speakOnFocus(isRecording 
+            ? 'Botón detener grabación de voz para transcribir, también puedes usar F6.' 
+            : 'Botón iniciar transcripción de voz, también puedes usar F6.'
+          )}
         >
           {isRecording ? 'Detener' : 'Transcribir'}
         </Button>
@@ -1022,6 +1086,7 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
             aria-label="Cancelar operación (F8)"
             title="Cancelar (F8)"
             style={{ flex: '1 1 auto', minWidth: '100px' }}
+            onFocus={() => speakOnFocus('Botón cancelar operación en curso, también puedes usar F8.')}
           >
             Cancelar
           </Button>
@@ -1051,6 +1116,8 @@ const TextEditor = React.forwardRef(({ contrast, fontSize, setOutput, setCodeStr
             value={editorContent}
             onChange={handleEditorChange}
             options={{
+              // Desactivar selectionClipboard para evitar errores internos de Monaco
+              selectionClipboard: false,
               selectOnLineNumbers: true,
               minimap: { enabled: false },
               scrollbar: { 

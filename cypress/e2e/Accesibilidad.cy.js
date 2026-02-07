@@ -8,6 +8,7 @@ describe('Accesibilidad', () => {
   });
   
   it('debería pasar las pruebas de accesibilidad', () => {
+    cy.get('[data-testid="ContrastIcon"]').should('be.visible').click();
     cy.checkA11y();
   });
 });

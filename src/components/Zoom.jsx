@@ -8,7 +8,7 @@ import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 import { useScreenReader } from '../contexts/ScreenReaderContext';
 
 function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabled }) {
-  const { enabled: screenReaderEnabled, toggle: toggleScreenReader } = useScreenReader();
+  const { enabled: screenReaderEnabled, toggle: toggleScreenReader, speakOnFocus } = useScreenReader();
   
   const handleZoomIn = () => {
     setScale((prevScale) => Math.min(prevScale + 0.1, 3));
@@ -73,6 +73,7 @@ function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabl
               backgroundColor: contrast === 'high-contrast' ? '#555' : '#f0f0f0'
             }
           }}
+          onFocus={() => speakOnFocus('Reducir zoom, disminuye el tamaño de todo el contenido')}
         >
           <ZoomOutIcon />
         </IconButton>
@@ -86,6 +87,7 @@ function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabl
               backgroundColor: contrast === 'high-contrast' ? '#555' : '#f0f0f0'
             }
           }}
+          onFocus={() => speakOnFocus('Aumentar zoom, incrementa el tamaño de todo el contenido')}
         >
           <ZoomInIcon />
         </IconButton>
@@ -99,6 +101,7 @@ function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabl
               backgroundColor: contrast === 'high-contrast' ? '#555' : '#f0f0f0'
             }
           }}
+          onFocus={() => speakOnFocus('Alternar contraste, cambia entre modo normal y alto contraste')}
         >
           <ContrastIcon />
         </IconButton>
@@ -112,6 +115,10 @@ function Zoom({ children, scale, setScale, contrast, setContrast, magnifierEnabl
               backgroundColor: contrast === 'high-contrast' ? '#555' : '#f0f0f0'
             }
           }}
+          onFocus={() => speakOnFocus(screenReaderEnabled 
+            ? 'Desactivar lector de pantalla y notificaciones de voz' 
+            : 'Activar lector de pantalla y notificaciones de voz'
+          )}
         >
           {screenReaderEnabled ? <VolumeUpIcon /> : <VolumeOffIcon />}
         </IconButton>
