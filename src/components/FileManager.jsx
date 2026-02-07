@@ -71,6 +71,7 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
   const [extensionErrorOpen, setExtensionErrorOpen] = React.useState(false);
   const chatPanelRef = React.useRef(null);
   const [focusedCodeIndex, setFocusedCodeIndex] = React.useState(-1);
+  const [targetFolderId, setTargetFolderId] = React.useState(null);
 
   // Función para obtener colores del tema
   const getThemeColors = (contrast) => {
@@ -186,19 +187,31 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
   const handleContextMenu = React.useCallback((event, item) => {
     event.preventDefault();
     event.stopPropagation();
+
+    let mouseX = event.clientX;
+    let mouseY = event.clientY;
+
+    // Si viene desde teclado (Enter/tecla de menú), clientX/Y suelen ser 0.
+    // En ese caso, anclamos el menú al elemento actual.
+    if (mouseX === 0 && mouseY === 0 && event.currentTarget) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      mouseX = rect.left + rect.width / 2;
+      mouseY = rect.top + rect.height;
+    }
+
     setContextMenu({
-      mouseX: event.clientX,
-      mouseY: event.clientY,
+      mouseX,
+      mouseY,
     });
     setSelectedItem(item);
     
     const itemType = item.type === 'folder' ? 'carpeta' : 'archivo';
     const isCurrent = item.type === 'file' && currentFileId === item.id;
-    const options = isCurrent 
-      ? 'Abrir, Guardar, Renombrar, Eliminar, Descargar'
-      : item.type === 'file' 
-        ? 'Abrir, Renombrar, Eliminar, Descargar' 
-        : 'Abrir, Renombrar, Eliminar';
+    const options = item.type === 'folder'
+      ? 'Expandir o colapsar, Crear archivo, Renombrar, Eliminar'
+      : isCurrent 
+        ? 'Abrir, Guardar, Renombrar, Eliminar, Descargar'
+        : 'Abrir, Renombrar, Eliminar, Descargar';
     
     speak(`Menú contextual abierto para ${itemType} ${item.name}. Opciones: ${options}`);
   }, [speak, currentFileId]);
@@ -489,23 +502,23 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
       });
       
       // Si la carpeta está abierta, agregar sus archivos
-      if (openFolders[folder.id] && folder.files && Array.isArray(folder.files)) {
-        folder.files.forEach(file => {
-          if (file && file.id && file.name) {
-            elements.push({ 
-              ...file, 
-              type: 'file', 
-              parentFolder: folder.id 
-            });
-          }
-        });
-      }
+      // if (openFolders[folder.id] && folder.files && Array.isArray(folder.files)) {
+      //   folder.files.forEach(file => {
+      //     if (file && file.id && file.name) {
+      //       elements.push({ 
+      //         ...file, 
+      //         type: 'file', 
+      //         parentFolder: folder.id 
+      //       });
+      //     }
+      //   });
+      // }
     }
   });
   
   // Agregar archivos sin carpeta
   files.forEach(file => {
-    if (file && file.id && file.name) {
+    if (file && file.id && file.name && !file.parentFolder) {
       elements.push({ ...file, type: 'file' });
     }
   });
@@ -1037,6 +1050,7 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     if (!checkStorageLimits(testFiles, folders)) return;
 
     setIsFile(true);
+    setTargetFolderId(null);
     setNewName('');
     setDialogOpen(true);
     speak('Diálogo de crear nuevo archivo abierto');
@@ -1048,10 +1062,31 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     if (!checkStorageLimits(files, testFolders)) return;
 
     setIsFile(false);
+    setTargetFolderId(null);
     setNewName('');
     setDialogOpen(true);
     speak('Diálogo de crear nueva carpeta abierto');
   };
+
+  const handleCreateFileInFolder = React.useCallback(() => {
+    if (!selectedItem || selectedItem.type !== 'folder') return;
+
+    const tempFile = { id: Date.now(), name: 'test', content: '', type: 'file', parentFolder: selectedItem.id };
+    const testFolders = folders.map(folder =>
+      folder.id === selectedItem.id
+        ? { ...folder, files: [...(folder.files || []), tempFile] }
+        : folder
+    );
+
+    if (!checkStorageLimits(files, testFolders)) return;
+
+    setIsFile(true);
+    setTargetFolderId(selectedItem.id);
+    setNewName('');
+    setDialogOpen(true);
+    speak(`Diálogo de crear nuevo archivo dentro de la carpeta ${selectedItem.name} abierto`);
+    handleCloseContextMenu();
+  }, [selectedItem, folders, files, checkStorageLimits, speak]);
 
   const handleOpenFile = () => {
     const input = document.createElement('input');
@@ -1081,7 +1116,9 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
           if (!checkStorageLimits(testFiles, folders)) return;
 
           setFiles(prev => [...prev, newFile]);
-          onFileOpen(newFile.name, event.target.result);
+          if (onFileOpen) {
+            onFileOpen(newFile.name, event.target.result, newFile.id);
+          }
           speak(`Archivo ${file.name} abierto correctamente`);
         };
         reader.readAsText(file);
@@ -1177,15 +1214,27 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
         id: Date.now(),
         name: fileName,
         content: '',
-        type: 'file'
+        type: 'file',
+        parentFolder: targetFolderId || null
       };
-      
-      const testFiles = [...files, newFile];
-      if (!checkStorageLimits(testFiles, folders)) return;
 
-      setFiles(prev => [...prev, newFile]);
+      if (targetFolderId) {
+        const updatedFolders = folders.map(folder =>
+          folder.id === targetFolderId
+            ? { ...folder, files: [...(folder.files || []), newFile] }
+            : folder
+        );
+
+        if (!checkStorageLimits(files, updatedFolders)) return;
+
+        setFolders(updatedFolders);
+      } else {
+        const testFiles = [...files, newFile];
+        if (!checkStorageLimits(testFiles, folders)) return;
+
+        setFiles(prev => [...prev, newFile]);
+      }
       
-      // Asegurarse de que onFileOpen se llame correctamente
       if (onFileOpen) {
         onFileOpen(fileName, '', newFile.id);
       }
@@ -1208,6 +1257,7 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     
     setDialogOpen(false);
     setNewName('');
+    setTargetFolderId(null);
   };;
 
   // Modificar handleFileClick para incluir la selección visual
@@ -1335,39 +1385,6 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     }
   }, [codeStructure]);
 
-  // Guardar en localStorage cuando cambien files o folders
-  React.useEffect(() => {
-    const handleStorageChange = (e) => {
-      // Manejar tanto StorageEvent como CustomEvent
-      if (e.key === 'files' || e.type === 'storage') {
-        const newFiles = JSON.parse(localStorage.getItem('files')) || [];
-        setFiles(newFiles);
-      }
-      if (e.key === 'folders' || e.type === 'storage') {
-        const newFolders = JSON.parse(localStorage.getItem('folders')) || [];
-        setFolders(newFolders);
-      }
-    };
-
-    // Escuchar eventos de storage (desde otras pestañas o componentes)
-    window.addEventListener('storage', handleStorageChange);
-    
-    // También escuchar un evento personalizado para cambios dentro de la misma pestaña
-    const handleLocalStorageUpdate = () => {
-      const newFiles = JSON.parse(localStorage.getItem('files')) || [];
-      const newFolders = JSON.parse(localStorage.getItem('folders')) || [];
-      setFiles(newFiles);
-      setFolders(newFolders);
-    };
-    
-    window.addEventListener('localStorage-updated', handleLocalStorageUpdate);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('localStorage-updated', handleLocalStorageUpdate);
-    };
-  }, []);
-
   // Focus en el componente al montar
   React.useEffect(() => {
     if (fileManagerRef.current && !collapsed) {
@@ -1388,11 +1405,6 @@ const FileManager = React.forwardRef(({ contrast, codeStructure, onFileOpen, col
     window.dispatchEvent(new Event('localStorage-updated'));
   }, [files]);
 
-  // Sincronizar folders con localStorage
-  React.useEffect(() => {
-    localStorage.setItem('folders', JSON.stringify(folders));
-    window.dispatchEvent(new Event('localStorage-updated'));
-  }, [folders]);
 
   // Registrar componente en el sistema de navegación
 React.useEffect(() => {
@@ -1476,7 +1488,6 @@ React.useEffect(() => {
         : 'none',
         outlineOffset: '-3px'
       }}
-      role="complementary"
       aria-label="Gestor de archivos y chat"
       {...props}
     >
@@ -2012,8 +2023,10 @@ React.useEffect(() => {
 
                   {/* Renderizar carpetas */}
                   {folders.filter(folder => folder && folder.id && folder.name).map((folder) => {
-                    const elements = getNavigableElements('files');
-                    const folderIndex = elements.findIndex(el => el && el.type === 'folder' && el.id === folder.id);
+                    const elements = getNavigableElements();
+                    const folderIndex = elements.findIndex(
+                      el => el && el.type === 'folder' && el.id === folder.id
+                    );
                     const isFocused = selectedIndex === folderIndex;
                     
                     return (
@@ -2229,6 +2242,7 @@ React.useEffect(() => {
                     }}
                     tabIndex={0}
                     onClick={() => setIsCodeStructureOpen(!isCodeStructureOpen)}
+                    onFocus={() => speakOnFocus(`Estructura del código con ${codeStructure.length} elementos, actualmente ${isCodeStructureOpen ? 'expandida' : 'colapsada'}`)}
                     aria-label={`Estructura del código con ${codeStructure.length} elementos, ${isCodeStructureOpen ? 'expandida' : 'colapsada'}`}
                     onMouseEnter={() => speakOnHover(`Estructura del código con ${codeStructure.length} elementos, actualmente ${isCodeStructureOpen ? 'expandida' : 'colapsada'}. Click para ${isCodeStructureOpen ? 'colapsar' : 'expandir'}`)}
                     onMouseLeave={cancelHoverSpeak}
@@ -2269,6 +2283,7 @@ React.useEffect(() => {
                                   backgroundColor: themeColors.hover
                                 }
                               }}
+                              onFocus={() => speakOnFocus(`${item.type} ${item.name ? item.name : 'sin nombre'}, líneas ${item.line} a ${item.end_line}`)}
                               aria-label={`${item.type} ${item.name ? item.name : 'sin nombre'}, desde línea ${item.line} hasta línea ${item.end_line}`}
                               onMouseEnter={() => speakOnHover(`${item.type} ${item.name ? item.name : 'sin nombre'}, desde línea ${item.line} hasta línea ${item.end_line}`)}
                               onMouseLeave={cancelHoverSpeak}
@@ -2529,6 +2544,9 @@ React.useEffect(() => {
                                   e.stopPropagation();
                                   handleContextMenu(e, element);
                                 }}
+                                onFocus={() => speakOnFocus(`Opciones para carpeta ${element.name}`)}
+                                onMouseEnter={() => speakOnHover(`Opciones para carpeta ${element.name}`)}
+                                onMouseLeave={cancelHoverSpeak}
                                 aria-label="Más opciones"
                                 sx={{ color: isFocused ? themeColors.background : themeColors.text }}
                               >
@@ -2594,6 +2612,9 @@ React.useEffect(() => {
                                           e.stopPropagation();
                                           handleContextMenu(e, { ...file, parentFolder: element.id });
                                         }}
+                                        onFocus={() => speakOnFocus(`Opciones para archivo ${file.name}`)}
+                                        onMouseEnter={() => speakOnHover(`Opciones para archivo ${file.name}`)}
+                                        onMouseLeave={cancelHoverSpeak}
                                         aria-label="Más opciones"
                                         sx={{ color: isFileFocused ? themeColors.background : themeColors.text }}
                                       >
@@ -2655,6 +2676,9 @@ React.useEffect(() => {
                                 e.stopPropagation();
                                 handleContextMenu(e, element);
                               }}
+                              onFocus={() => speakOnFocus(`Opciones para archivo ${element.name}`)}
+                              onMouseEnter={() => speakOnHover(`Opciones para archivo ${element.name}`)}
+                              onMouseLeave={cancelHoverSpeak}
                               aria-label="Más opciones"
                               sx={{ color: isFocused ? themeColors.background : themeColors.text }}
                             >
@@ -2698,6 +2722,7 @@ React.useEffect(() => {
               handleCloseContextMenu();
             }}
             aria-label="Abrir archivo"
+            onFocus={() => speakOnFocus('Abrir archivo en el editor')}
             onMouseEnter={() => speakOnHover('Abrir archivo en el editor')}
             onMouseLeave={cancelHoverSpeak}
           >
@@ -2711,6 +2736,7 @@ React.useEffect(() => {
           <MenuItem 
             onClick={handleSaveCurrentFile}
             aria-label="Guardar archivo (Alt+S)"
+            onFocus={() => speakOnFocus('Guardar archivo actual. También puedes usar Alt más S')}
             onMouseEnter={() => speakOnHover('Guardar archivo. También puedes usar Alt más S')}
             onMouseLeave={cancelHoverSpeak}
           >
@@ -2727,6 +2753,7 @@ React.useEffect(() => {
               handleCloseContextMenu();
             }}
             aria-label="Expandir/colapsar carpeta"
+            onFocus={() => speakOnFocus('Expandir o colapsar carpeta seleccionada')}
             onMouseEnter={() => speakOnHover('Expandir o colapsar carpeta')}
             onMouseLeave={cancelHoverSpeak}
           >
@@ -2735,9 +2762,23 @@ React.useEffect(() => {
           </MenuItem>
         )}
 
+        {/* Crear archivo dentro de carpeta */}
+        {selectedItem?.type === 'folder' && (
+          <MenuItem 
+            onClick={handleCreateFileInFolder}
+            aria-label="Crear archivo dentro de esta carpeta"
+            onFocus={() => speakOnFocus('Crear un nuevo archivo dentro de esta carpeta')}
+            onMouseEnter={() => speakOnHover('Crear un nuevo archivo dentro de esta carpeta')}
+            onMouseLeave={cancelHoverSpeak}
+          >
+            Crear archivo aquí
+          </MenuItem>
+        )}
+
         <MenuItem 
           onClick={handleRename}
           aria-label="Renombrar"
+          onFocus={() => speakOnFocus('Renombrar archivo o carpeta seleccionada')}
           onMouseEnter={() => speakOnHover('Renombrar')}
           onMouseLeave={cancelHoverSpeak}
         >
@@ -2748,6 +2789,7 @@ React.useEffect(() => {
         <MenuItem 
           onClick={handleDelete}
           aria-label="Eliminar"
+          onFocus={() => speakOnFocus('Eliminar archivo o carpeta seleccionada')}
           onMouseEnter={() => speakOnHover('Eliminar')}
           onMouseLeave={cancelHoverSpeak}
         >
@@ -2759,6 +2801,7 @@ React.useEffect(() => {
           <MenuItem 
             onClick={handleDownload}
             aria-label="Descargar"
+            onFocus={() => speakOnFocus('Descargar archivo a tu computadora')}
             onMouseEnter={() => speakOnHover('Descargar archivo a tu computadora')}
             onMouseLeave={cancelHoverSpeak}
           >

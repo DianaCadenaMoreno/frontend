@@ -475,7 +475,8 @@ function IDE() {
   };
   
   return (
-    <div style={{ 
+    <div 
+    style={{ 
       display: 'flex', 
       flexDirection: 'column', 
       height: '100vh',
@@ -498,7 +499,6 @@ function IDE() {
               ref={navbarRef} 
               onOpenAppearanceModal={handleOpenAppearanceModal}
               onFileOpen={handleFileOpen}
-              role="banner"
               aria-label="Barra de navegación principal"
             />
           </div>
@@ -547,7 +547,6 @@ function IDE() {
                   screenReaderEnabled={screenReaderEnabled}
                   currentFileId={currentFileId}
                   onSaveFile={handleSaveFile}
-                  role="complementary"
                   aria-label="Gestor de archivos y chat"
                 />
               </div>
@@ -640,7 +639,6 @@ function IDE() {
                       textEditorRef={textEditorRef}
                       collapsed={terminalCollapsed}
                       onToggleCollapse={() => setTerminalCollapsed(!terminalCollapsed)}
-                      role="complementary"
                       aria-label="Terminal y herramientas de depuración"
                     />
                   </div>

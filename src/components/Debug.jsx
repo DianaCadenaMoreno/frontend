@@ -9,6 +9,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import { useDebuggerWebSocket } from '../hooks/useDebuggerWebSocket';
+import { useScreenReader } from '../contexts/ScreenReaderContext';
 
 // function Debug({ contrast, textEditorRef }) {
 const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
@@ -33,12 +34,37 @@ const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
     stopDebug
   } = useDebuggerWebSocket();
 
+  const { speak, speakOnFocus } = useScreenReader();
+
   // Solicitar variables cada vez que se llega a un breakpoint
   useEffect(() => {
     if (debugState.currentLine && debugState.isDebugging) {
       setTimeout(() => getVariables(), 100);
     }
   }, [debugState.currentLine, debugState.isDebugging, getVariables]);
+
+  // Anunciar cuando se llega o cambia a una nueva línea durante la depuración
+  useEffect(() => {
+    if (debugState.isDebugging && debugState.currentLine) {
+      const fileName = debugState.currentFile || 'archivo actual';
+      speak(`Ejecución pausada en ${fileName}, línea ${debugState.currentLine}`);
+    }
+  }, [debugState.isDebugging, debugState.currentLine, debugState.currentFile, speak]);
+
+  // Anunciar excepciones cuando ocurren
+  useEffect(() => {
+    if (debugState.exception) {
+      const { type, message, file, line } = debugState.exception;
+      speak(`Excepción ${type || 'desconocida'} en archivo ${file}, línea ${line}. ${message || ''}`);
+    }
+  }, [debugState.exception, speak]);
+
+  // Anunciar cuando las variables se actualizan en un breakpoint
+  useEffect(() => {
+    if (debugState.isDebugging && debugState.variables) {
+      speak('Variables actualizadas para la línea actual', { rate: 1.2 });
+    }
+  }, [debugState.isDebugging, debugState.variables, speak]);
 
   const handleAddBreakpoint = () => {
     const line = parseInt(breakpointLine);
@@ -219,6 +245,7 @@ const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
               value={breakpointLine}
               onChange={(e) => setBreakpointLine(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleAddBreakpoint()}
+              onFocus={() => speakOnFocus('Campo número de línea para breakpoint. Escribe el número y pulsa Enter o el botón Agregar.')}
               variant="outlined"
               type="number"
               disabled={debugState.isDebugging}
@@ -243,6 +270,7 @@ const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
               onClick={handleAddBreakpoint}
               disabled={!breakpointLine || debugState.isDebugging}
               startIcon={<AddCircleIcon />}
+              onFocus={() => speakOnFocus('Botón para agregar breakpoint en la línea indicada')}
               sx={{
                 backgroundColor: themeColors.buttonBg,
                 color: themeColors.buttonText,
@@ -303,6 +331,7 @@ const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
                 aria-label="Iniciar depuración" 
                 fullWidth
                 startIcon={<PlayArrowIcon />}
+                onFocus={() => speakOnFocus('Botón iniciar depuración con los breakpoints configurados')}
                 sx={{
                   backgroundColor: themeColors.buttonBg,
                   color: themeColors.buttonText,
@@ -332,8 +361,9 @@ const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
                     color: themeColors.buttonText,
                     flex: 1
                   }}
+                  onFocus={() => speakOnFocus('Botón paso, avanza una línea en la depuración')}
                 >
-                  Step
+                  Paso
                 </Button>
                 <Button
                   variant="contained"
@@ -344,8 +374,9 @@ const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
                     color: themeColors.buttonText,
                     flex: 1
                   }}
+                  onFocus={() => speakOnFocus('Botón entrar, entra en la función llamada en esta línea')}
                 >
-                  Step Into
+                  Entrar
                 </Button>
                 <Button
                   variant="contained"
@@ -356,8 +387,9 @@ const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
                     color: themeColors.buttonText,
                     flex: 1
                   }}
+                  onFocus={() => speakOnFocus('Botón saltar, ejecuta la función sin entrar en ella')}
                 >
-                  Step Over
+                  Saltar
                 </Button>
                 <Button
                   variant="contained"
@@ -368,6 +400,7 @@ const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
                     color: '#fff',
                     flex: 1
                   }}
+                  onFocus={() => speakOnFocus('Botón continuar, sigue la ejecución hasta el siguiente breakpoint o el final')}
                 >
                   Continuar
                 </Button>
@@ -384,6 +417,7 @@ const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
                       backgroundColor: 'rgba(255,0,0,0.1)' 
                     }
                   }}
+                  onFocus={() => speakOnFocus('Botón detener depuración y limpiar breakpoints configurados')}
                 >
                   Detener
                 </Button>
@@ -456,7 +490,12 @@ const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
           {/* Variables locales */}
           {debugState.variables.locals && Object.keys(debugState.variables.locals).length > 0 && (
             <Box sx={{ mb: 2 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600, mb: 1, color: themeColors.text }}>
+              <Typography 
+                variant="body2" 
+                sx={{ fontWeight: 600, mb: 1, color: themeColors.text }}
+                tabIndex={0}
+                onFocus={() => speakOnFocus('Sección de variables locales. Lista de variables con su tipo y valor. Usa tab para navegar por cada variable.')}
+              >
                 Variables Locales:
               </Typography>
               <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
@@ -469,6 +508,11 @@ const Debug = React.forwardRef(({ contrast, textEditorRef }, ref) => {
                       backgroundColor: themeColors.inputBg, 
                       borderRadius: 1,
                       borderLeft: `3px solid ${themeColors.accent}`
+                    }}
+                    tabIndex={0}
+                    onFocus={() => {
+                      const valueText = String(info.str || info.value);
+                      speakOnFocus(`Variable local ${name}, tipo ${info.type}. Valor ${valueText}`);
                     }}
                   >
                     <Typography 

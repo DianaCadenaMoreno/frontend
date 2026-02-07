@@ -86,12 +86,12 @@ const WelcomeScreen = React.forwardRef(({ contrast }, ref) => {
           surfaceHover: '#eeeeee',
           hover: '#e0e0e0',
           text: '#000000',
-          textSecondary: '#666666',
-          border: '#ddd',
-          accent: '#1976d2',
-          info: '#0288d1',
-          warning: '#f57c00',
-          divider: '#e0e0e0'
+          textSecondary: '#4d4d4d',
+          border: '#ccc',
+          accent: '#0d47a1',
+          info: '#01579b',
+          warning: '#e65100',
+          divider: '#d0d0d0'
         };
     }
   };
@@ -643,7 +643,6 @@ const WelcomeScreen = React.forwardRef(({ contrast }, ref) => {
         scrollbarWidth: 'thin',
         scrollbarColor: `${themeColors.accent} ${themeColors.background}`,
       }}
-      role="main"
       aria-label="Pantalla de bienvenida a Code Flow"
     >
       <Paper
@@ -678,6 +677,7 @@ const WelcomeScreen = React.forwardRef(({ contrast }, ref) => {
           </Typography>
           <Typography
             variant="h6"
+            component="h2"
             sx={{ 
               color: themeColors.textSecondary, 
               mb: 3,
