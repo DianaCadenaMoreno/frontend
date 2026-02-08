@@ -512,6 +512,7 @@ const WelcomeScreen = React.forwardRef(({ contrast }, ref) => {
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography 
               variant="h6" 
+              component="h3"
               sx={{ 
                 color: themeColors.text, 
                 fontWeight: 'bold',
@@ -722,6 +723,7 @@ const WelcomeScreen = React.forwardRef(({ contrast }, ref) => {
           <Divider sx={{ borderColor: themeColors.divider, my: 3 }} />
           <Typography
             variant="h5"
+            component="h3"
             sx={{ 
               color: themeColors.accent, 
               fontWeight: 'bold', 
